@@ -379,7 +379,7 @@
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
                 
-                document.getElementById('lokasiGPS').value = `maps.google.com/?q=${lat},${lng}`;
+                document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=${lat},${lng}`;
                 
                 // Cek apakah ada lokasi lama dalam 50 meter
                 const hasNearby = await checkExistingNearby(lat, lng);
