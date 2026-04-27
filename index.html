@@ -28,8 +28,6 @@
     <!-- AUTH VIEW -->
     <div id="authView" class="min-h-screen flex items-center justify-center p-6">
         <div class="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
-            
-            <!-- LOGIN FORM -->
             <div id="loginForm">
                 <div class="text-center mb-8">
                     <img src="calsindo.jpeg" class="h-20 mx-auto mb-4 object-contain" alt="Logo Calsindo">
@@ -46,7 +44,6 @@
                 </div>
             </div>
 
-            <!-- REGISTER FORM -->
             <div id="registerForm" class="hidden">
                 <div class="text-center mb-8">
                     <img src="calsindo.jpeg" class="h-20 mx-auto mb-4 object-contain" alt="Logo Calsindo">
@@ -63,7 +60,6 @@
                     </p>
                 </div>
             </div>
-
         </div>
     </div>
 
@@ -213,16 +209,9 @@
             const { data: { user } } = await supabaseClient.auth.getUser();
             if (user) {
                 activeUser = user;
-
-                const { data: member } = await supabaseClient
-                    .from('members')
-                    .select('full_name')
-                    .eq('id', user.id)
-                    .single();
-
+                const { data: member } = await supabaseClient.from('members').select('full_name').eq('id', user.id).single();
                 const displayName = member?.full_name || user.email;
                 document.getElementById('userNameDisplay').innerText = "User: " + displayName;
-
                 document.getElementById('appView').classList.remove('hidden-view');
                 document.getElementById('authView').classList.add('hidden-view');
             } else {
@@ -233,49 +222,30 @@
         async function handleLogin() {
             const email = document.getElementById('authEmail').value.trim();
             const pass = document.getElementById('authPass').value.trim();
-           
-            if (!email || !pass) {
-                alert("Email dan Password harus diisi!");
-                return;
-            }
-           
+            if (!email || !pass) return alert("Email dan Password harus diisi!");
             const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
-            if (error) {
-                alert("Login gagal: " + error.message);
-            } else {
-                checkSession();
-            }
+            if (error) alert("Login gagal: " + error.message);
+            else checkSession();
         }
 
         async function handleRegister() {
             const name = document.getElementById('regName').value.trim();
             const email = document.getElementById('regEmail').value.trim();
             const pass = document.getElementById('regPass').value.trim();
-           
-            if (!name || !email || !pass) {
-                alert("Nama, Email, dan Password harus diisi!");
-                return;
-            }
+            if (!name || !email || !pass) return alert("Nama, Email, dan Password harus diisi!");
            
             const { data, error } = await supabaseClient.auth.signUp({ email, password: pass });
-           
-            if (error) {
-                alert("Registrasi gagal: " + error.message);
-                return;
-            }
+            if (error) return alert("Registrasi gagal: " + error.message);
 
-            const { error: memberError } = await supabaseClient
-                .from('members')
-                .insert({
-                    id: data.user.id,
-                    full_name: name,
-                    email: email,
-                    role: 'petugas'
-                });
+            const { error: memberError } = await supabaseClient.from('members').insert({
+                id: data.user.id,
+                full_name: name,
+                email: email,
+                role: 'petugas'
+            });
 
-            if (memberError) {
-                alert("Akun dibuat, tapi gagal menyimpan nama: " + memberError.message);
-            } else {
+            if (memberError) alert("Gagal menyimpan nama: " + memberError.message);
+            else {
                 alert("Akun berhasil dibuat! Silakan login.");
                 showLoginForm();
             }
@@ -286,7 +256,16 @@
             location.reload();
         }
 
-        // ==================== FOTO GRID (DENGAN ERROR HANDLING) ====================
+        // ==================== FOTO DENGAN PROXY GOOGLE DRIVE ====================
+        function getProxiedImageUrl(originalUrl) {
+            if (!originalUrl) return '';
+            // Jika URL dari Google Drive, gunakan proxy
+            if (originalUrl.includes('drive.google.com')) {
+                return `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}`;
+            }
+            return originalUrl;
+        }
+
         function initPhotoGrid() {
             const grid = document.getElementById('photoGrid');
             grid.innerHTML = '';
@@ -300,7 +279,7 @@
                     <i class="fas fa-camera text-3xl text-gray-300"></i>
                     <div class="error-text absolute inset-0 hidden flex-col items-center justify-center text-red-500 text-xs text-center p-1">
                         <i class="fas fa-exclamation-triangle text-lg mb-1"></i>
-                        <span>Gagal memuat</span>
+                        <span>Gagal memuat foto</span>
                     </div>
                     <button class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full hidden delete-btn">×</button>
                 `;
@@ -354,14 +333,16 @@
                 if (errorText) errorText.style.display = 'none';
             }
 
-            existingPhotoUrls.forEach((url, index) => {
+            existingPhotoUrls.forEach((originalUrl, index) => {
                 if (index < 4) {
                     const slot = slots[index];
                     const preview = slot.querySelector('.photoPreview');
                     const icon = slot.querySelector('i');
                     const delBtn = slot.querySelector('.delete-btn');
 
-                    preview.src = url;
+                    // Gunakan proxy untuk Google Drive
+                    const proxiedUrl = getProxiedImageUrl(originalUrl);
+                    preview.src = proxiedUrl;
                     preview.classList.remove('hidden');
                     icon.classList.add('hidden');
                     delBtn.classList.remove('hidden');
