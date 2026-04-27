@@ -1,11 +1,12 @@
 {
   "name": "Monitoring Calsindo",
   "short_name": "Calsindo",
-  "description": "Aplikasi Demplot Monitoring Calsindo",
+  "description": "Aplikasi Monitoring Demplot Calsindo",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f9fafb",
   "theme_color": "#2563eb",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "calsindo.jpeg",
