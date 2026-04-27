@@ -264,15 +264,69 @@
             document.getElementById('selKecamatan').innerHTML = html;
         }
 
-        // FIX: Format Link GPS diperbaiki 100% menggunakan backtick dan penempatan variabel yang benar
+        // --- AUTO-FILL REVERSE GEOCODING (Menyamai Geocoder Android) ---
+        async function autoFillWilayah(lat, lng) {
+            try {
+                showLoading(true, "Membaca Peta Satelit...");
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1&accept-language=id`);
+                const data = await res.json();
+
+                if(data && data.address) {
+                    const addr = data.address;
+                    let provName = addr.state || addr.region || "";
+                    let kotaName = addr.city || addr.county || addr.town || "";
+                    let kecName = addr.suburb || addr.village || addr.municipality || addr.district || "";
+
+                    const findOption = (selectId, text) => {
+                        if(!text) return null;
+                        const cleanText = text.toLowerCase().replace(/kabupaten|kota|kecamatan|provinsi/g, '').trim();
+                        const options = document.getElementById(selectId).options;
+                        for(let i=0; i<options.length; i++) {
+                            const optText = options[i].text.toLowerCase().replace(/kabupaten|kota|kecamatan|provinsi/g, '').trim();
+                            if(optText === cleanText || optText.includes(cleanText) || cleanText.includes(optText)) return options[i].value;
+                        }
+                        return null;
+                    };
+
+                    // Set Provinsi
+                    const provVal = findOption('selProvinsi', provName);
+                    if(provVal) {
+                        document.getElementById('selProvinsi').value = provVal;
+                        await loadCities(provVal);
+                        
+                        // Set Kota
+                        const kotaVal = findOption('selKota', kotaName);
+                        if(kotaVal) {
+                            document.getElementById('selKota').value = kotaVal;
+                            await loadDistricts(kotaVal);
+                            
+                            // Set Kecamatan & Trigger ID
+                            const kecVal = findOption('selKecamatan', kecName);
+                            if(kecVal) {
+                                document.getElementById('selKecamatan').value = kecVal;
+                                await generateIDManual();
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.log("Geocoding gagal", e);
+            }
+        }
+
         function detectGPS() {
             showLoading(true, "Mengunci Satelit GPS...");
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
-                document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=${lat},${lng}`;
+                // FIX: Penambahan tanda $ pada variabel agar nilai titik koordinat asli muncul
+                document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=$${lat},${lng}`;
+                
+                // Memicu sinkronisasi alamat otomatis seperti Android
+                await autoFillWilayah(lat, lng);
+
                 showLoading(false);
-                alert("GPS Terkunci. Silakan pilih wilayah di menu atas untuk mengisi ID.");
+                alert("GPS Terkunci dan ID Demplot berhasil dibuat otomatis.");
             }, (e) => {
                 showLoading(false);
                 alert("Gagal ambil GPS: " + e.message);
