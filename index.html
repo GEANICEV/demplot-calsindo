@@ -441,7 +441,7 @@
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
-                document.getElementById('lokasiGPS').value = `maps.google.com/?q=${lat},${lng}`;
+                document.getElementById('lokasiGPS').value = `htpps://maps.google.com/?q=${lat},${lng}`;
                 
                 const hasNearby = await checkExistingNearby(lat, lng);
                 if (!hasNearby) await autoFillWilayah(lat, lng);
