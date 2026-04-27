@@ -359,7 +359,7 @@
                 const lng = pos.coords.longitude;
                 
                 // === FORMAT SESUAI SUPABASE (maps.google.com/?q=...) ===
-                document.getElementById('lokasiGPS').value = `maps.google.com/?q=${lat},${lng}`;
+                document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=${lat},${lng}`;
                 
                 await autoFillWilayah(lat, lng);
                 showLoading(false);
