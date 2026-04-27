@@ -270,7 +270,6 @@
                 
                 const addr = data.address;
                 
-                // PROVINSI
                 const satProv = normalize(addr.state || addr.region || "");
                 const provOpts = document.getElementById('selProvinsi').options;
                 let provSet = false;
@@ -285,7 +284,6 @@
                     }
                 }
                 
-                // KOTA/KABUPATEN
                 const satKota = normalize(addr.city || addr.county || addr.town || addr.municipality || "");
                 const kotaOpts = document.getElementById('selKota').options;
                 let kotaSet = false;
@@ -300,7 +298,6 @@
                     }
                 }
                 
-                // KECAMATAN
                 const potentialKec = [
                     addr.suburb, addr.district, addr.village, addr.municipality,
                     addr.town, addr.city_district, addr.neighbourhood, addr.hamlet
@@ -328,7 +325,6 @@
                     if (foundKec) break;
                 }
                 
-                // KUNCI + STATUS
                 const statusEl = document.getElementById('locationStatus');
                 const statusText = document.getElementById('statusText');
                 
@@ -370,7 +366,6 @@
             }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
         }
         
-        // ==================== FUNGSI GENERATE ID DENGAN SLOT KOSONG (VERSI BARU) ====================
         async function generateIDManual() {
             const pOpt = document.querySelector('#selProvinsi option:checked');
             const kOpt = document.querySelector('#selKota option:checked');
@@ -396,7 +391,6 @@
                 return alert("Gagal mengecek ID: " + error.message);
             }
             
-            // Ambil semua nomor yang sudah ada
             const existing = new Set();
             if (data && data.length > 0) {
                 data.forEach(row => {
@@ -406,13 +400,11 @@
                 });
             }
             
-            // Cari nomor terkecil yang BELUM ADA (mulai dari 001)
             let next = 1;
             while (existing.has(next)) {
                 next++;
             }
             
-            // Batasi maksimal 999
             if (next > 999) next = 999;
             
             const finalID = prefix + "_" + next.toString().padStart(3, '0');
@@ -467,14 +459,46 @@
             }
         }
         
+        // ==================== FUNGSI SUBMIT DENGAN URUTAN BARU (AMAN) ====================
         async function submitData() {
             const id = document.getElementById('idDemplot').value;
             if (!id) return alert("ID Demplot belum terbuat! Silakan deteksi lokasi dulu.");
-            
-            showLoading(true, "Mengunggah Foto...");
+
+            // === 1. SIAPKAN DATA TANPA FOTO DULU ===
+            const basePayload = {
+                "ID_Demplot": id,
+                "Nama Pemilik Demplot": document.getElementById('namaPemilik').value,
+                "Telepon": document.getElementById('telepon').value,
+                "Luasan Demplot": document.getElementById('luasan').value,
+                "Lokasi Demplot": document.getElementById('lokasiGPS').value,
+                "Foto": "",                    // kosong dulu
+                "Tanggal Tanam": fixDate(document.getElementById('tglTanam').value),
+                "Tanggal Perlakuan 1": fixDate(document.getElementById('p1').value),
+                "Tanggal Perlakuan 2": fixDate(document.getElementById('p2').value),
+                "Tanggal Perlakuan 3": fixDate(document.getElementById('p3').value),
+                "Tanggal Perlakuan 4": fixDate(document.getElementById('p4').value),
+                "Keterangan": document.getElementById('keterangan').value,
+                "last_edited": activeUser.email,
+                "created_by": activeUser.email
+            };
+
+            showLoading(true, "Menyimpan data ke Supabase...");
+
+            // === 2. UPSERT KE SUPABASE DULU (TANPA FOTO) ===
+            const { error: supabaseError } = await supabaseClient
+                .from('demplot_monitoring')
+                .upsert(basePayload);
+
+            if (supabaseError) {
+                showLoading(false);
+                return alert("Gagal menyimpan data ke Supabase: " + supabaseError.message);
+            }
+
+            // === 3. BARU UPLOAD FOTO KE GOOGLE DRIVE ===
+            showLoading(true, "Mengunggah Foto ke Google Drive...");
             const inputs = document.querySelectorAll('.photoInput');
             let urls = [];
-            
+
             for (let inp of inputs) {
                 if (inp.files[0]) {
                     const b64 = await new Promise(r => {
@@ -482,6 +506,7 @@
                         fr.onload = (e) => r(e.target.result.split(',')[1]);
                         fr.readAsDataURL(inp.files[0]);
                     });
+                    
                     const res = await fetch(GAS_URL, {
                         method: 'POST',
                         body: JSON.stringify({ 
@@ -493,34 +518,25 @@
                     if (j.status === "success") urls.push(j.url);
                 }
             }
-            
-            showLoading(true, "Menyimpan ke Cloud...");
-            const payload = {
-                "ID_Demplot": id,
-                "Nama Pemilik Demplot": document.getElementById('namaPemilik').value,
-                "Telepon": document.getElementById('telepon').value,
-                "Luasan Demplot": document.getElementById('luasan').value,
-                "Lokasi Demplot": document.getElementById('lokasiGPS').value,
-                "Foto": urls.join(','),
-                "Tanggal Tanam": fixDate(document.getElementById('tglTanam').value),
-                "Tanggal Perlakuan 1": fixDate(document.getElementById('p1').value),
-                "Tanggal Perlakuan 2": fixDate(document.getElementById('p2').value),
-                "Tanggal Perlakuan 3": fixDate(document.getElementById('p3').value),
-                "Tanggal Perlakuan 4": fixDate(document.getElementById('p4').value),
-                "Keterangan": document.getElementById('keterangan').value,
-                "last_edited": activeUser.email,
-                "created_by": activeUser.email
-            };
-            
-            const { error } = await supabaseClient.from('demplot_monitoring').upsert(payload);
-            showLoading(false);
-            
-            if (error) {
-                alert("Gagal menyimpan: " + error.message);
-            } else {
-                alert("✅ Data berhasil disimpan ke Cloud!");
-                location.reload();
+
+            // === 4. UPDATE SUPABASE LAGI DENGAN LINK FOTO ===
+            if (urls.length > 0) {
+                showLoading(true, "Menyimpan link foto...");
+                
+                const { error: updateError } = await supabaseClient
+                    .from('demplot_monitoring')
+                    .update({ "Foto": urls.join(',') })
+                    .eq('ID_Demplot', id);
+
+                if (updateError) {
+                    showLoading(false);
+                    return alert("Data berhasil disimpan, tapi gagal menyimpan link foto: " + updateError.message);
+                }
             }
+
+            showLoading(false);
+            alert("✅ Data & Foto berhasil disimpan ke Cloud!");
+            location.reload();
         }
         
         function showLoading(show, text) {
