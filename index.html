@@ -357,7 +357,10 @@
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
-                document.getElementById('lokasiGPS').value = `https://www.google.com/maps?q=${lat},${lng}`;
+                
+                // === FORMAT SESUAI SUPABASE (maps.google.com/?q=...) ===
+                document.getElementById('lokasiGPS').value = `maps.google.com/?q=${lat},${lng}`;
+                
                 await autoFillWilayah(lat, lng);
                 showLoading(false);
             }, (e) => {
@@ -459,19 +462,17 @@
             }
         }
         
-        // ==================== FUNGSI SUBMIT DENGAN URUTAN BARU (AMAN) ====================
         async function submitData() {
             const id = document.getElementById('idDemplot').value;
             if (!id) return alert("ID Demplot belum terbuat! Silakan deteksi lokasi dulu.");
 
-            // === 1. SIAPKAN DATA TANPA FOTO DULU ===
             const basePayload = {
                 "ID_Demplot": id,
                 "Nama Pemilik Demplot": document.getElementById('namaPemilik').value,
                 "Telepon": document.getElementById('telepon').value,
                 "Luasan Demplot": document.getElementById('luasan').value,
                 "Lokasi Demplot": document.getElementById('lokasiGPS').value,
-                "Foto": "",                    // kosong dulu
+                "Foto": "",
                 "Tanggal Tanam": fixDate(document.getElementById('tglTanam').value),
                 "Tanggal Perlakuan 1": fixDate(document.getElementById('p1').value),
                 "Tanggal Perlakuan 2": fixDate(document.getElementById('p2').value),
@@ -484,7 +485,6 @@
 
             showLoading(true, "Menyimpan data ke Supabase...");
 
-            // === 2. UPSERT KE SUPABASE DULU (TANPA FOTO) ===
             const { error: supabaseError } = await supabaseClient
                 .from('demplot_monitoring')
                 .upsert(basePayload);
@@ -494,7 +494,6 @@
                 return alert("Gagal menyimpan data ke Supabase: " + supabaseError.message);
             }
 
-            // === 3. BARU UPLOAD FOTO KE GOOGLE DRIVE ===
             showLoading(true, "Mengunggah Foto ke Google Drive...");
             const inputs = document.querySelectorAll('.photoInput');
             let urls = [];
@@ -519,7 +518,6 @@
                 }
             }
 
-            // === 4. UPDATE SUPABASE LAGI DENGAN LINK FOTO ===
             if (urls.length > 0) {
                 showLoading(true, "Menyimpan link foto...");
                 
