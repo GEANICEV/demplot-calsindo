@@ -76,7 +76,7 @@
 
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div>
-                    <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase">ID Demplot (Auto)</label>
+                    <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase">ID Demplot (Auto Slot Kosong)</label>
                     <input type="text" id="idDemplot" readonly class="w-full border rounded-xl p-3 text-sm font-mono font-bold tracking-tighter">
                 </div>
                 <div>
@@ -181,9 +181,19 @@
 
         async function handleLogout() { await supabaseClient.auth.signOut(); location.reload(); }
 
+        // --- FUNGSI STANDARISASI STRING ---
         function toTitleCase(str) { return str.replace(/KABUPATEN |KOTA |KECAMATAN |KEC\. /gi, "").toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '); }
         function toPascalCase(str) { return str.replace(/KABUPATEN |KOTA |KECAMATAN |KEC\. /gi, "").toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(''); }
 
+        function normalizeString(str) {
+            if (!str) return "";
+            let s = str.toLowerCase().replace(/provinsi|kabupaten|kota|kecamatan|kec\.|daerah|khusus|ibukota|istimewa/gi, "").trim();
+            if (s === "di yogyakarta" || s === "d i yogyakarta") return "yogyakarta";
+            if (s === "dki jakarta") return "jakarta";
+            return s;
+        }
+
+        // --- EMSIFA LOADER ---
         async function loadProvinces() {
             const res = await fetch("https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json");
             const data = await res.json();
@@ -210,60 +220,50 @@
             document.getElementById('selKecamatan').innerHTML = html;
         }
 
-        // --- SISTEM GEOCODER BARU & PEMBERSIH KATA MUTLAK ---
+        // --- SISTEM GEOCODER ABSOLUT ---
         async function autoFillWilayah(lat, lng) {
             try {
-                // Menggunakan BigDataCloud yang lebih stabil dan tidak diblokir browser
+                // Menggunakan BigDataCloud untuk Reverse Geocoding gratisan pengganti Android Geocoder
                 const url = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=" + lat + "&longitude=" + lng + "&localityLanguage=id";
                 const res = await fetch(url);
                 const data = await res.json();
 
-                const satProv = data.principalSubdivision || "";
-                const satKota = data.city || data.locality || "";
-                const satKec = data.locality || "";
+                if(data) {
+                    const targetProv = normalizeString(data.principalSubdivision);
+                    const targetKotaCandidates = [normalizeString(data.city), normalizeString(data.locality)];
+                    const targetKecCandidates = [normalizeString(data.locality)];
 
-                // Fungsi pembersih karakter absolut (buang semua kata depan dan spasi)
-                const cleanWord = (str) => {
-                    if(!str) return "";
-                    let s = str.toLowerCase();
-                    if(s.includes("yogyakarta")) return "yogyakarta";
-                    if(s.includes("jakarta")) return "jakarta";
-                    return s.replace(/provinsi|kabupaten|kota|kecamatan|kec\.|daerah|khusus|ibukota|istimewa/g, "")
-                            .replace(/\s+/g, ""); // Hapus seluruh spasi
-                };
-
-                const targetProv = cleanWord(satProv);
-                const targetKota = cleanWord(satKota);
-                const targetKec = cleanWord(satKec);
-
-                const findMatch = (selectId, target) => {
-                    if(!target) return null;
-                    const opts = document.getElementById(selectId).options;
-                    for(let i=1; i<opts.length; i++) {
-                        const optClean = cleanWord(opts[i].text);
-                        if(optClean === target || optClean.includes(target) || target.includes(optClean)) {
-                            return opts[i].value;
+                    const findMatch = (selectId, candidates) => {
+                        const opts = document.getElementById(selectId).options;
+                        for(let i=1; i<opts.length; i++) {
+                            const optClean = normalizeString(opts[i].text);
+                            // Jika ada di dalam array kandidat, atau saling beririsan substring
+                            if(candidates.includes(optClean) || candidates.some(c => c && (c.includes(optClean) || optClean.includes(c)))) {
+                                return opts[i].value;
+                            }
                         }
-                    }
-                    return null;
-                };
+                        return null;
+                    };
 
-                const pVal = findMatch('selProvinsi', targetProv);
-                if(pVal) {
-                    document.getElementById('selProvinsi').value = pVal;
-                    await loadCities(pVal);
+                    const pVal = findMatch('selProvinsi', [targetProv]);
+                    if(pVal) {
+                        document.getElementById('selProvinsi').value = pVal;
+                        await loadCities(pVal);
 
-                    const kVal = findMatch('selKota', targetKota);
-                    if(kVal) {
-                        document.getElementById('selKota').value = kVal;
-                        await loadDistricts(kVal);
+                        const kVal = findMatch('selKota', targetKotaCandidates);
+                        if(kVal) {
+                            document.getElementById('selKota').value = kVal;
+                            await loadDistricts(kVal);
 
-                        const dVal = findMatch('selKecamatan', targetKec);
-                        if(dVal) {
-                            document.getElementById('selKecamatan').value = dVal;
-                            await generateIDManual();
-                        } else {
-                            console.log("Kecamatan gagal dicocokkan otomatis.");
+                            const dVal = findMatch('selKecamatan', targetKecCandidates);
+                            if(dVal) {
+                                document.getElementById('selKecamatan').value = dVal;
+                                await generateIDManual();
+                            } else {
+                                // Mencegah salah prefix. Biarkan kosong jika satelit web tidak identik dengan database KEMENDAGRI.
+                                document.getElementById('selKecamatan').value = "";
+                                document.getElementById('idDemplot').value = "";
+                            }
                         }
                     }
                 }
@@ -278,7 +278,7 @@
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
                 
-                // MURNI IDENTIK ANDROID 27
+                // MURNI IDENTIK ANDROID 100%, TANPA SIMBOL DOLLAR / BACKTICK
                 document.getElementById('lokasiGPS').value = "https://maps.google.com/?q=-7.4438457,112.5596899" + lat + "," + lng;
                 
                 await autoFillWilayah(lat, lng);
@@ -289,18 +289,28 @@
             }, { enableHighAccuracy: true });
         }
 
+        // --- SISTEM ID SLOT KOSONG ---
         async function generateIDManual() {
             const p = document.querySelector('#selProvinsi option:checked')?.dataset.name;
             const k = document.querySelector('#selKota option:checked')?.dataset.name;
             const d = document.querySelector('#selKecamatan option:checked')?.dataset.name;
-            if(!p || !k || !d) return;
+            
+            // Wajib terisi ketiga dropdown agar prefix akurat
+            if(!p || !k || !d) {
+                document.getElementById('idDemplot').value = "";
+                return;
+            }
 
             const prefix = getShortProv(p) + "_" + toPascalCase(k) + "_" + toPascalCase(d);
-            showLoading(true, "Mencari Slot ID Kosong...");
+            showLoading(true, "Mencari Slot ID...");
 
-            const { data } = await supabaseClient.from('demplot_monitoring').select('ID_Demplot').ilike('ID_Demplot', prefix + '%');
+            // Cari semua ID berawalan prefiks ini di Supabase
+            const { data } = await supabaseClient
+                .from('demplot_monitoring')
+                .select('ID_Demplot')
+                .ilike('ID_Demplot', prefix + '_%')
+                .order('ID_Demplot', { ascending: true });
             
-            // LOGIKA SLOT KOSONG (MENCARI ID YANG TERHAPUS/TERLEWAT)
             let existingNums = [];
             if(data) {
                 existingNums = data.map(item => {
@@ -309,6 +319,7 @@
                 }).filter(n => !isNaN(n)).sort((a, b) => a - b);
             }
 
+            // Loop untuk menemukan angka yang bolong (Jika ada 1, 2, 4 -> otomatis isi 3)
             let nextNum = 1;
             for (let i = 0; i < existingNums.length; i++) {
                 if (existingNums[i] === nextNum) { 
@@ -356,7 +367,7 @@
 
         async function submitData() {
             const id = document.getElementById('idDemplot').value;
-            if(!id) return alert("ID Kosong!");
+            if(!id) return alert("ID Kosong! Pastikan Provinsi/Kota/Kecamatan terpilih.");
             showLoading(true, "Mengunggah...");
             const inps = document.querySelectorAll('.photoInput');
             let urls = [];
