@@ -256,10 +256,9 @@
             location.reload();
         }
 
-        // ==================== FOTO DENGAN PROXY GOOGLE DRIVE ====================
+        // ==================== FOTO ====================
         function getProxiedImageUrl(originalUrl) {
             if (!originalUrl) return '';
-            // Jika URL dari Google Drive, gunakan proxy
             if (originalUrl.includes('drive.google.com')) {
                 return `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}`;
             }
@@ -340,7 +339,6 @@
                     const icon = slot.querySelector('i');
                     const delBtn = slot.querySelector('.delete-btn');
 
-                    // Gunakan proxy untuk Google Drive
                     const proxiedUrl = getProxiedImageUrl(originalUrl);
                     preview.src = proxiedUrl;
                     preview.classList.remove('hidden');
@@ -588,15 +586,58 @@
             document.getElementById('idDemplot').value = prefix + "_" + next.toString().padStart(3, '0');
         }
 
+        // ==================== FUNGSI getShortProv YANG LENGKAP ====================
         function getShortProv(fullName) {
-            const n = fullName.toUpperCase();
-            if (n.includes("JAWA TIMUR")) return "Jatim";
-            if (n.includes("JAWA TENGAH")) return "Jateng";
-            if (n.includes("JAWA BARAT")) return "Jabar";
-            if (n.includes("NUSA TENGGARA BARAT")) return "NTB";
-            if (n.includes("NUSA TENGGARA TIMUR")) return "NTT";
-            if (n.includes("YOGYAKARTA")) return "DIY";
-            if (n.includes("JAKARTA")) return "DKI";
+            const n = fullName.toUpperCase().trim();
+            
+            const provinceMap = {
+                "ACEH": "Aceh",
+                "SUMATERA UTARA": "Sumut",
+                "SUMATERA BARAT": "Sumbar",
+                "RIAU": "Riau",
+                "JAMBI": "Jambi",
+                "SUMATERA SELATAN": "Sumsel",
+                "BENGKULU": "Bengkulu",
+                "LAMPUNG": "Lampung",
+                "KEPULAUAN BANGKA BELITUNG": "Babel",
+                "KEPULAUAN RIAU": "Kepri",
+                "DKI JAKARTA": "DKI",
+                "JAWA BARAT": "Jabar",
+                "JAWA TENGAH": "Jateng",
+                "DAERAH ISTIMEWA YOGYAKARTA": "DIY",
+                "JAWA TIMUR": "Jatim",
+                "BANTEN": "Banten",
+                "BALI": "Bali",
+                "NUSA TENGGARA BARAT": "NTB",
+                "NUSA TENGGARA TIMUR": "NTT",
+                "KALIMANTAN BARAT": "Kalbar",
+                "KALIMANTAN TENGAH": "Kalteng",
+                "KALIMANTAN SELATAN": "Kalsel",
+                "KALIMANTAN TIMUR": "Kaltim",
+                "KALIMANTAN UTARA": "Kaltara",
+                "SULAWESI UTARA": "Sulut",
+                "SULAWESI TENGAH": "Sulteng",
+                "SULAWESI SELATAN": "Sulsel",
+                "SULAWESI TENGGARA": "Sultra",
+                "GORONTALO": "Gorontalo",
+                "SULAWESI BARAT": "Sulbar",
+                "MALUKU": "Maluku",
+                "MALUKU UTARA": "Malut",
+                "PAPUA": "Papua",
+                "PAPUA BARAT": "Papbar",
+                "PAPUA SELATAN": "Papsel",
+                "PAPUA TENGAH": "Papteng",
+                "PAPUA PEGUNUNGAN": "Papeg",
+                "PAPUA BARAT DAYA": "PapbarDaya"
+            };
+
+            for (const [key, value] of Object.entries(provinceMap)) {
+                if (n.includes(key)) {
+                    return value;
+                }
+            }
+            
+            // Fallback jika tidak ditemukan
             return toPascalCaseID(fullName);
         }
 
