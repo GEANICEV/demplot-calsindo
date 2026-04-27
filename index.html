@@ -59,7 +59,7 @@
                 <i class="fas fa-location-crosshairs text-xl"></i>
                 DETEKSI LOKASI & ID OTOMATIS
             </button>
-            
+
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -264,12 +264,13 @@
             document.getElementById('selKecamatan').innerHTML = html;
         }
 
+        // FIX: Format Link GPS diperbaiki 100% menggunakan backtick dan penempatan variabel yang benar
         function detectGPS() {
             showLoading(true, "Mengunci Satelit GPS...");
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
-                document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=$currentLat,$currentLong?q=${lat},${lng}`;
+                document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=${lat},${lng}`;
                 showLoading(false);
                 alert("GPS Terkunci. Silakan pilih wilayah di menu atas untuk mengisi ID.");
             }, (e) => {
