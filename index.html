@@ -516,7 +516,7 @@
             }, { enableHighAccuracy: true });
         }
 
-        // ==================== FUNGSI autoFillWilayah YANG SUDAH DIPERBAIKI ====================
+        // ==================== FUNGSI autoFillWilayah (VERSI PALING STABIL) ====================
         async function autoFillWilayah(lat, lng) {
             try {
                 const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=id`;
@@ -524,26 +524,23 @@
                 const data = await res.json();
 
                 if (!data || !data.address) {
-                    alert("Gagal membaca data lokasi dari server.");
+                    alert("Gagal membaca data lokasi.");
                     return;
                 }
 
                 const addr = data.address;
-                let provinceName = addr.state || addr.region || addr.province || addr.state_district || "";
+                const provinceName = addr.state || addr.region || "";
                 const satProv = normalize(provinceName);
                 const provOpts = document.getElementById('selProvinsi').options;
 
                 let provinceMatched = false;
 
                 for (let i = 1; i < provOpts.length; i++) {
-                    const optionText = provOpts[i].text;
-                    const pNameNorm = normalize(optionText);
-
+                    const pNameNorm = normalize(provOpts[i].text);
+                    
                     const isExact = satProv === pNameNorm;
-                    const isStrongMatch = 
-                        (satProv.includes(pNameNorm) && pNameNorm.length >= 4) || 
-                        (pNameNorm.includes(satProv) && satProv.length >= 4) ||
-                        (satProv.split(' ').some(w => w.length > 3 && pNameNorm.includes(w)));
+                    const isStrongMatch = (satProv.includes(pNameNorm) && pNameNorm.length >= 5) || 
+                                          (pNameNorm.includes(satProv) && satProv.length >= 5);
 
                     if (isExact || isStrongMatch) {
                         document.getElementById('selProvinsi').value = provOpts[i].value;
@@ -554,13 +551,12 @@
                 }
 
                 if (!provinceMatched) {
-                    console.log("Nama provinsi dari GPS:", provinceName);
-                    alert("Gagal mendeteksi Provinsi otomatis.\n\nSilakan pilih manual.");
+                    alert("Gagal mendeteksi Provinsi otomatis. Silakan pilih manual.");
                     return;
                 }
 
                 // Kota
-                const satKota = normalize(addr.city || addr.county || addr.town || addr.municipality || "");
+                const satKota = normalize(addr.city || addr.county || addr.town || "");
                 const kotaOpts = document.getElementById('selKota').options;
                 for (let i = 1; i < kotaOpts.length; i++) {
                     const kNameNorm = normalize(kotaOpts[i].text);
@@ -572,7 +568,7 @@
                 }
 
                 // Kecamatan
-                const potentialKec = [addr.suburb, addr.district, addr.village, addr.municipality, addr.town, addr.city_district]
+                const potentialKec = [addr.suburb, addr.district, addr.village, addr.municipality]
                     .filter(Boolean).map(n => normalize(n)).filter(n => n.length > 2);
 
                 const kecOpts = document.getElementById('selKecamatan').options;
@@ -581,11 +577,7 @@
                 for (let target of potentialKec) {
                     for (let i = 1; i < kecOpts.length; i++) {
                         const optNorm = normalize(kecOpts[i].text);
-                        const isMatch = optNorm === target || optNorm.includes(target) || target.includes(optNorm) ||
-                            (target.split(' ').some(w => w.length > 3 && optNorm.includes(w)) && 
-                             optNorm.split(' ').some(w => w.length > 3 && target.includes(w)));
-                        
-                        if (isMatch) {
+                        if (optNorm === target || optNorm.includes(target) || target.includes(optNorm)) {
                             document.getElementById('selKecamatan').value = kecOpts[i].value;
                             foundKec = true;
                             break;
@@ -597,7 +589,7 @@
                 if (foundKec) await generateIDManual();
 
             } catch (e) {
-                console.error("Error autoFillWilayah:", e);
+                console.error(e);
                 alert("Terjadi kesalahan saat mendeteksi lokasi.");
             }
         }
