@@ -181,7 +181,7 @@
             if (user) {
                 activeUser = user;
                 showView('appView');
-                document.getElementById('userNameDisplay').innerText = `User: ${user.email}`;
+                document.getElementById('userNameDisplay').innerText = "User: " + user.email;
             } else {
                 showView('authView');
             }
@@ -198,7 +198,7 @@
             const email = document.getElementById('authEmail').value;
             const pass = document.getElementById('authPass').value;
             showLoading(true, "Mengecek Akun...");
-            const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
+            const { error } = await supabaseClient.auth.signInWithPassword({ email: email, password: pass });
             showLoading(false);
             if (error) return alert(error.message);
             checkSession();
@@ -209,7 +209,7 @@
             const pass = document.getElementById('authPass').value;
             if(!confirm("Daftar akun baru dengan email ini?")) return;
             showLoading(true, "Mendaftarkan...");
-            const { error } = await supabaseClient.auth.signUp({ email, password: pass });
+            const { error } = await supabaseClient.auth.signUp({ email: email, password: pass });
             showLoading(false);
             if (error) return alert(error.message);
             alert("Berhasil! Silakan cek email untuk verifikasi atau langsung login jika sudah.");
@@ -220,7 +220,7 @@
             location.reload();
         }
 
-        // --- HELPER FUNGSI TATA BAHASA (TITLE CASE) ---
+        // --- HELPER FUNGSI TATA BAHASA ---
         function toTitleCaseDisplay(str) {
             return str.replace(/KABUPATEN |KOTA |KECAMATAN |KEC\. /gi, "")
                       .toLowerCase()
@@ -242,87 +242,99 @@
             const res = await fetch("https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json");
             const data = await res.json();
             let html = '<option value="">Pilih Prov</option>';
-            data.forEach(p => html += `<option value="${p.id}" data-name="${p.name}">${toTitleCaseDisplay(p.name)}</option>`);
+            data.forEach(p => html += '<option value="' + p.id + '" data-name="' + p.name + '">' + toTitleCaseDisplay(p.name) + '</option>');
             document.getElementById('selProvinsi').innerHTML = html;
         }
 
         async function loadCities(pid) {
             if(!pid) return;
-            const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${pid}.json`);
+            const res = await fetch("https://www.emsifa.com/api-wilayah-indonesia/api/regencies/" + pid + ".json");
             const data = await res.json();
             let html = '<option value="">Pilih Kota</option>';
-            data.forEach(c => html += `<option value="${c.id}" data-name="${c.name}">${toTitleCaseDisplay(c.name)}</option>`);
+            data.forEach(c => html += '<option value="' + c.id + '" data-name="' + c.name + '">' + toTitleCaseDisplay(c.name) + '</option>');
             document.getElementById('selKota').innerHTML = html;
         }
 
         async function loadDistricts(cid) {
             if(!cid) return;
-            const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${cid}.json`);
+            const res = await fetch("https://www.emsifa.com/api-wilayah-indonesia/api/districts/" + cid + ".json");
             const data = await res.json();
             let html = '<option value="">Pilih Kecamatan</option>';
-            data.forEach(d => html += `<option value="${d.id}" data-name="${d.name}">${toTitleCaseDisplay(d.name)}</option>`);
+            data.forEach(d => html += '<option value="' + d.id + '" data-name="' + d.name + '">' + toTitleCaseDisplay(d.name) + '</option>');
             document.getElementById('selKecamatan').innerHTML = html;
         }
 
-        // --- AUTO-FILL REVERSE GEOCODING (Menyamai Geocoder Android) ---
+        // --- LOGIKA OTOMATIS AUTO-FILL WILAYAH (PENGGANTI GEOCODER ANDROID) ---
         async function autoFillWilayah(lat, lng) {
             try {
-                showLoading(true, "Membaca Peta Satelit...");
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1&accept-language=id`);
+                const url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&zoom=14&addressdetails=1&accept-language=id";
+                const res = await fetch(url);
                 const data = await res.json();
 
                 if(data && data.address) {
-                    const addr = data.address;
-                    let provName = addr.state || addr.region || "";
-                    let kotaName = addr.city || addr.county || addr.town || "";
-                    let kecName = addr.suburb || addr.village || addr.municipality || addr.district || "";
+                    // Gabungkan semua alamat satelit agar pasti kena waktu dicari
+                    const allAddrStr = Object.values(data.address).join(' ').toLowerCase();
 
-                    const findOption = (selectId, text) => {
-                        if(!text) return null;
-                        const cleanText = text.toLowerCase().replace(/kabupaten|kota|kecamatan|provinsi/g, '').trim();
-                        const options = document.getElementById(selectId).options;
-                        for(let i=0; i<options.length; i++) {
-                            const optText = options[i].text.toLowerCase().replace(/kabupaten|kota|kecamatan|provinsi/g, '').trim();
-                            if(optText === cleanText || optText.includes(cleanText) || cleanText.includes(optText)) return options[i].value;
-                        }
-                        return null;
-                    };
+                    // 1. Pilih Provinsi Otomatis
+                    let provVal = null;
+                    const provOpts = document.getElementById('selProvinsi').options;
+                    for(let i=1; i<provOpts.length; i++) {
+                        let pName = provOpts[i].text.toLowerCase().replace('provinsi ','').trim();
+                        if(pName === 'di yogyakarta') pName = 'yogyakarta';
+                        if(pName === 'dki jakarta') pName = 'jakarta';
+                        
+                        if(allAddrStr.includes(pName)) { provVal = provOpts[i].value; break; }
+                    }
 
-                    // Set Provinsi
-                    const provVal = findOption('selProvinsi', provName);
                     if(provVal) {
                         document.getElementById('selProvinsi').value = provVal;
                         await loadCities(provVal);
                         
-                        // Set Kota
-                        const kotaVal = findOption('selKota', kotaName);
+                        // 2. Pilih Kota Otomatis
+                        let kotaVal = null;
+                        const kotaOpts = document.getElementById('selKota').options;
+                        for(let i=1; i<kotaOpts.length; i++) {
+                            let kName = kotaOpts[i].text.toLowerCase().replace(/kabupaten |kota /g,'').trim();
+                            if(allAddrStr.includes(kName)) { kotaVal = kotaOpts[i].value; break; }
+                        }
+
                         if(kotaVal) {
                             document.getElementById('selKota').value = kotaVal;
                             await loadDistricts(kotaVal);
                             
-                            // Set Kecamatan & Trigger ID
-                            const kecVal = findOption('selKecamatan', kecName);
+                            // 3. Pilih Kecamatan Otomatis
+                            let kecVal = null;
+                            const kecOpts = document.getElementById('selKecamatan').options;
+                            for(let i=1; i<kecOpts.length; i++) {
+                                let cName = kecOpts[i].text.toLowerCase().replace(/kecamatan /g,'').trim();
+                                if(allAddrStr.includes(cName)) { kecVal = kecOpts[i].value; break; }
+                            }
+
+                            // 4. Langsung Generate ID Jika Kecamatan Ditemukan
                             if(kecVal) {
                                 document.getElementById('selKecamatan').value = kecVal;
                                 await generateIDManual();
+                            } else {
+                                alert("Kecamatan dari satelit tidak ada di database, silakan pilih Kecamatan manual untuk memunculkan ID Demplot.");
                             }
                         }
                     }
                 }
             } catch (e) {
-                console.log("Geocoding gagal", e);
+                console.log("Geocoding satelit gagal:", e);
             }
         }
 
         function detectGPS() {
-            showLoading(true, "Mengunci Satelit GPS...");
+            showLoading(true, "Mengunci Peta Satelit...");
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
-                // FIX: Penambahan tanda $ pada variabel agar nilai titik koordinat asli muncul
-                document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=$${lat},${lng}`;
                 
-                // Memicu sinkronisasi alamat otomatis seperti Android
+                // MURNI CONCATENATION (+), 100% IDENTIK SEPERTI ANDROID JAVA, TANPA SIMBOL DOLLAR
+                document.getElementById('lokasiGPS').value = "http://maps.google.com/maps?q=" + lat + "," + lng;
+                
+                // Panggil Auto-Fill untuk memicu Provinsi, Kota, Kec & ID secara otomatis
                 await autoFillWilayah(lat, lng);
 
                 showLoading(false);
@@ -371,16 +383,16 @@
             const cleanK = toPascalCaseID(k);
             const cleanD = toPascalCaseID(d);
             
-            const prefix = `${cleanP}_${cleanK}_${cleanD}`;
+            const prefix = cleanP + "_" + cleanK + "_" + cleanD;
             showLoading(true, "Mengecek ID Terakhir...");
             
-            const { data } = await supabaseClient.from('demplot_monitoring').select('ID_Demplot').ilike('ID_Demplot', `${prefix}%`);
+            const { data } = await supabaseClient.from('demplot_monitoring').select('ID_Demplot').ilike('ID_Demplot', prefix + '%');
             let next = 1;
             if(data && data.length > 0) {
                 const nums = data.map(i => parseInt(i.ID_Demplot.split('_').pop())).filter(n => !isNaN(n));
                 if(nums.length > 0) next = Math.max(...nums) + 1;
             }
-            document.getElementById('idDemplot').value = `${prefix}_${next.toString().padStart(3, '0')}`;
+            document.getElementById('idDemplot').value = prefix + "_" + next.toString().padStart(3, '0');
             showLoading(false);
         }
 
@@ -430,7 +442,7 @@
                     });
                     const res = await fetch(GAS_URL, { 
                         method: 'POST', 
-                        body: JSON.stringify({ filename: `IMG_${id}_${Date.now()}.jpg`, image: b64 }) 
+                        body: JSON.stringify({ filename: "IMG_" + id + "_" + Date.now() + ".jpg", image: b64 }) 
                     });
                     const j = await res.json();
                     if(j.status === "success") urls.push(j.url);
