@@ -264,58 +264,61 @@
             document.getElementById('selKecamatan').innerHTML = html;
         }
 
-        // --- LOGIKA OTOMATIS AUTO-FILL WILAYAH (PENGGANTI GEOCODER ANDROID) ---
+        // --- PENGGANTI GEOCODER ANDROID (SUPER STRICT MATCH) ---
         async function autoFillWilayah(lat, lng) {
             try {
-                const url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&zoom=14&addressdetails=1&accept-language=id";
+                // Gunakan zoom=18 untuk menarik data administrasi paling detail
+                const url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&zoom=18&addressdetails=1&accept-language=id";
                 const res = await fetch(url);
                 const data = await res.json();
 
                 if(data && data.address) {
-                    // Gabungkan semua alamat satelit agar pasti kena waktu dicari
-                    const allAddrStr = Object.values(data.address).join(' ').toLowerCase();
+                    const addr = data.address;
+                    // Gabungkan hanya elemen administratif (tanpa nama jalan) agar lebih bersih
+                    const satData = [
+                        addr.state, addr.region, 
+                        addr.city, addr.county, addr.municipality, 
+                        addr.town, addr.village, addr.suburb, addr.district, addr.city_district
+                    ].filter(Boolean).join(' ').toLowerCase();
 
-                    // 1. Pilih Provinsi Otomatis
-                    let provVal = null;
-                    const provOpts = document.getElementById('selProvinsi').options;
-                    for(let i=1; i<provOpts.length; i++) {
-                        let pName = provOpts[i].text.toLowerCase().replace('provinsi ','').trim();
-                        if(pName === 'di yogyakarta') pName = 'yogyakarta';
-                        if(pName === 'dki jakarta') pName = 'jakarta';
-                        
-                        if(allAddrStr.includes(pName)) { provVal = provOpts[i].value; break; }
+                    // Fungsi pencarian menggunakan Regex Exact Word Boundary
+                    function findMatch(selectId, prefixesToRemove) {
+                        const opts = document.getElementById(selectId).options;
+                        for(let i=1; i<opts.length; i++) {
+                            let text = opts[i].text.toLowerCase();
+                            prefixesToRemove.forEach(p => text = text.replace(p, ''));
+                            text = text.trim();
+                            if(text === 'di yogyakarta') text = 'yogyakarta';
+                            if(text === 'dki jakarta') text = 'jakarta';
+
+                            // \b memastikan pencocokan kata secara utuh (Taman != Tamansari)
+                            const regex = new RegExp("\\b" + text + "\\b", "i");
+                            if(regex.test(satData)) return opts[i].value;
+                        }
+                        return null;
                     }
 
+                    // 1. Provinsi
+                    let provVal = findMatch('selProvinsi', ['provinsi ']);
                     if(provVal) {
                         document.getElementById('selProvinsi').value = provVal;
                         await loadCities(provVal);
                         
-                        // 2. Pilih Kota Otomatis
-                        let kotaVal = null;
-                        const kotaOpts = document.getElementById('selKota').options;
-                        for(let i=1; i<kotaOpts.length; i++) {
-                            let kName = kotaOpts[i].text.toLowerCase().replace(/kabupaten |kota /g,'').trim();
-                            if(allAddrStr.includes(kName)) { kotaVal = kotaOpts[i].value; break; }
-                        }
-
+                        // 2. Kota
+                        let kotaVal = findMatch('selKota', ['kabupaten ', 'kota ']);
                         if(kotaVal) {
                             document.getElementById('selKota').value = kotaVal;
                             await loadDistricts(kotaVal);
                             
-                            // 3. Pilih Kecamatan Otomatis
-                            let kecVal = null;
-                            const kecOpts = document.getElementById('selKecamatan').options;
-                            for(let i=1; i<kecOpts.length; i++) {
-                                let cName = kecOpts[i].text.toLowerCase().replace(/kecamatan /g,'').trim();
-                                if(allAddrStr.includes(cName)) { kecVal = kecOpts[i].value; break; }
-                            }
-
-                            // 4. Langsung Generate ID Jika Kecamatan Ditemukan
+                            // 3. Kecamatan
+                            let kecVal = findMatch('selKecamatan', ['kecamatan ', 'kec. ']);
+                            
+                            // 4. Memicu Pembuatan ID
                             if(kecVal) {
                                 document.getElementById('selKecamatan').value = kecVal;
                                 await generateIDManual();
                             } else {
-                                alert("Kecamatan dari satelit tidak ada di database, silakan pilih Kecamatan manual untuk memunculkan ID Demplot.");
+                                alert("Kecamatan terbaca di satelit tapi beda nama dengan database pemerintah. Silakan pilih Kecamatan manual agar ID terbuat.");
                             }
                         }
                     }
@@ -331,17 +334,17 @@
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
                 
-                // MURNI CONCATENATION (+), 100% IDENTIK SEPERTI ANDROID JAVA, TANPA SIMBOL DOLLAR
-                document.getElementById('lokasiGPS').value = "http://maps.google.com/maps?q=" + lat + "," + lng;
+                // MURNI CONCATENATION (+), IDENTIK 100% ANDROID JAVA
+                document.getElementById('lokasiGPS').value = "https://maps.google.com/?q=$currentLat,$currentLong?q=$" + lat + "," + lng;
                 
                 // Panggil Auto-Fill untuk memicu Provinsi, Kota, Kec & ID secara otomatis
                 await autoFillWilayah(lat, lng);
 
                 showLoading(false);
-                alert("GPS Terkunci dan ID Demplot berhasil dibuat otomatis.");
+                alert("Satelit terkunci. ID Otomatis disiapkan.");
             }, (e) => {
                 showLoading(false);
-                alert("Gagal ambil GPS: " + e.message);
+                alert("Gagal ambil GPS. Pastikan Izin Lokasi Safari aktif.");
             }, { enableHighAccuracy: true });
         }
 
