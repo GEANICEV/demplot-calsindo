@@ -158,12 +158,14 @@
     </div>
 
     <script>
-        // --- KONFIGURASI ---
+        // ==========================================
+        // KONFIGURASI PARAMETER PERUSAHAAN
+        // ==========================================
         const SB_URL = "https://adlsyyualatelwwkftyf.supabase.co";
-        const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbHN5eXVhbGF0ZWx3d2tmdHlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwMDY3MzcsImV4cCI6MjA4NjU4MjczN30.QG7BL1d5OORWX6U6TGvz5-1IgjjsT8xexGUwwKM8AH4";
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbyfE94m7LzQZl_0Lp9v_2Yp_7Q5X_NlZf/exec";
+        const SB_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbHN5eXVhbGF0ZWx3d2tmdHlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwMDY3MzcsImV4cCI6MjA4NjU4MjczN30.QG7BL1d5OORWX6U6TGvz5-1IgjjsT8xexGUwwKM8AH4";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbyIfannGC5N-oykQAiRXfL4d62txBsxM1upcao6qkuuBFV9l9AyoRnBYsnAcwCj8TFfmA/exec";
 
-        const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+        const supabaseClient = supabase.createClient(SB_URL, SB_ANON_KEY);
         let activeUser = null;
 
         // --- INISIALISASI ---
@@ -217,7 +219,7 @@
             location.reload();
         }
 
-        // --- GPS & REGION LOGIC ---
+        // --- GPS & REGION LOGIC (API EMSIFA) ---
         async function loadProvinces() {
             const res = await fetch("https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json");
             const data = await res.json();
@@ -245,13 +247,13 @@
         }
 
         function detectGPS() {
-            showLoading(true, "Mengunci GPS...");
+            showLoading(true, "Mengunci Satelit GPS...");
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
                 document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=$currentLat,$currentLong?q=${lat},${lng}`;
                 showLoading(false);
-                alert("GPS Terkunci. Silakan pilih wilayah untuk generate ID.");
+                alert("GPS Terkunci. Silakan pilih wilayah di menu atas untuk mengisi ID.");
             }, (e) => {
                 showLoading(false);
                 alert("Gagal ambil GPS: " + e.message);
@@ -329,6 +331,7 @@
             showLoading(true, "Mengunggah Foto ke Drive...");
             const inputs = document.querySelectorAll('.photoInput');
             let urls = [];
+            
             for(let inp of inputs) {
                 if(inp.files[0]) {
                     const b64 = await new Promise(r => {
@@ -336,13 +339,16 @@
                         fr.onload = (e) => r(e.target.result.split(',')[1]);
                         fr.readAsDataURL(inp.files[0]);
                     });
-                    const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ filename: `IMG_${id}_${Date.now()}.jpg`, image: b64 }) });
+                    const res = await fetch(GAS_URL, { 
+                        method: 'POST', 
+                        body: JSON.stringify({ filename: `IMG_${id}_${Date.now()}.jpg`, image: b64 }) 
+                    });
                     const j = await res.json();
                     if(j.status === "success") urls.push(j.url);
                 }
             }
 
-            showLoading(true, "Final Saving...");
+            showLoading(true, "Menyimpan ke Supabase...");
             const payload = {
                 "ID_Demplot": id,
                 "Nama Pemilik Demplot": document.getElementById('namaPemilik').value,
