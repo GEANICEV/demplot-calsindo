@@ -25,7 +25,7 @@
 </head>
 <body class="bg-gray-50">
 
-    <!-- ==================== AUTH VIEW ==================== -->
+    <!-- AUTH VIEW -->
     <div id="authView" class="min-h-screen flex items-center justify-center p-6">
         <div class="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
             
@@ -46,7 +46,7 @@
                 </div>
             </div>
 
-            <!-- REGISTER FORM (Hanya muncul saat daftar) -->
+            <!-- REGISTER FORM -->
             <div id="registerForm" class="hidden">
                 <div class="text-center mb-8">
                     <img src="calsindo.jpeg" class="h-20 mx-auto mb-4 object-contain" alt="Logo Calsindo">
@@ -67,7 +67,7 @@
         </div>
     </div>
 
-    <!-- ==================== APP VIEW ==================== -->
+    <!-- APP VIEW -->
     <div id="appView" class="hidden-view">
         <header class="bg-white border-b sticky top-0 z-50 px-4 py-3 flex justify-between items-center shadow-sm">
             <div class="flex items-center gap-3">
@@ -199,7 +199,6 @@
             await loadProvinces();
         };
 
-        // ==================== TAMPILKAN FORM ====================
         function showLoginForm() {
             document.getElementById('loginForm').classList.remove('hidden');
             document.getElementById('registerForm').classList.add('hidden');
@@ -210,20 +209,20 @@
             document.getElementById('registerForm').classList.remove('hidden');
         }
 
-        // ==================== AUTH ====================
+        // ==================== AUTH + NAMA DARI TABEL MEMBERS ====================
         async function checkSession() {
             const { data: { user } } = await supabaseClient.auth.getUser();
             if (user) {
                 activeUser = user;
 
-                // Ambil nama dari tabel members
+                // Ambil nama dari tabel members berdasarkan id
                 const { data: member } = await supabaseClient
                     .from('members')
-                    .select('name')
-                    .eq('user_id', user.id)
+                    .select('full_name')
+                    .eq('id', user.id)
                     .single();
 
-                const displayName = member?.name || user.email;
+                const displayName = member?.full_name || user.email;
                 document.getElementById('userNameDisplay').innerText = "User: " + displayName;
 
                 document.getElementById('appView').classList.remove('hidden-view');
@@ -260,7 +259,7 @@
                 return;
             }
            
-            // 1. Buat akun auth
+            // 1. Buat akun di auth
             const { data, error } = await supabaseClient.auth.signUp({ email, password: pass });
            
             if (error) {
@@ -268,13 +267,14 @@
                 return;
             }
 
-            // 2. Simpan nama ke tabel members
+            // 2. Simpan ke tabel members (menggunakan kolom id dan full_name)
             const { error: memberError } = await supabaseClient
                 .from('members')
                 .insert({
-                    user_id: data.user.id,
-                    name: name,
-                    email: email
+                    id: data.user.id,
+                    full_name: name,
+                    email: email,
+                    role: 'petugas'
                 });
 
             if (memberError) {
