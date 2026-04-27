@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Monitoring Calsindo</title>
-   
+  
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Calsindo">
     <link rel="apple-touch-icon" href="calsindo.jpeg">
     <link rel="manifest" href="manifest.json">
-   
+  
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-   
+  
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -38,12 +38,11 @@
                     <input type="password" id="authPass" placeholder="Password" class="w-full border rounded-xl p-4 text-sm">
                     <button onclick="handleLogin()" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl">LOGIN</button>
                     <p class="text-center text-sm text-gray-600">
-                        Belum punya akun? 
+                        Belum punya akun?
                         <span onclick="showRegisterForm()" class="text-blue-600 font-semibold cursor-pointer">Daftar di sini</span>
                     </p>
                 </div>
             </div>
-
             <div id="registerForm" class="hidden">
                 <div class="text-center mb-8">
                     <img src="calsindo.jpeg" class="h-20 mx-auto mb-4 object-contain" alt="Logo Calsindo">
@@ -55,7 +54,7 @@
                     <input type="password" id="regPass" placeholder="Password" class="w-full border rounded-xl p-4 text-sm">
                     <button onclick="handleRegister()" class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl">DAFTAR</button>
                     <p class="text-center text-sm text-gray-600">
-                        Sudah punya akun? 
+                        Sudah punya akun?
                         <span onclick="showLoginForm()" class="text-blue-600 font-semibold cursor-pointer">Login di sini</span>
                     </p>
                 </div>
@@ -75,16 +74,16 @@
             </div>
             <button onclick="handleLogout()"><i class="fas fa-sign-out-alt text-xl"></i></button>
         </header>
-       
+      
         <main class="max-w-md mx-auto p-4 space-y-5">
             <div class="text-center">
                 <img src="calsindo.jpeg" class="h-20 mx-auto mb-2" alt="Logo">
             </div>
-           
+          
             <button onclick="detectGPS()" class="w-full bg-emerald-600 text-white font-bold py-4 rounded-2xl flex justify-center items-center gap-3">
                 <i class="fas fa-location-crosshairs text-xl"></i> DETEKSI LOKASI &amp; ID OTOMATIS
             </button>
-           
+          
             <!-- WILAYAH -->
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div class="grid grid-cols-2 gap-3">
@@ -101,14 +100,14 @@
                     <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase">Kecamatan</label>
                     <select id="selKecamatan" onchange="generateIDManual()" class="w-full border rounded-lg p-2 text-sm h-10 outline-none"></select>
                 </div>
-               
+              
                 <div id="locationStatus" class="mt-2 text-xs text-emerald-600 flex items-center gap-2 hidden">
                     <i class="fas fa-lock mr-1"></i>
                     <span id="statusText">Lokasi &amp; ID otomatis dari GPS</span>
                     <button onclick="unlockLocation()" class="ml-auto text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Buka Kunci</button>
                 </div>
             </div>
-           
+          
             <!-- FORM DATA -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div>
@@ -134,13 +133,13 @@
                     <input type="text" id="lokasiGPS" readonly class="w-full border rounded-xl p-3 text-[10px] text-blue-600 underline overflow-hidden text-ellipsis">
                 </div>
             </div>
-           
+          
             <!-- FOTO -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <label class="block text-[10px] font-bold text-gray-400 mb-3 uppercase">Foto Dokumentasi (Maks 4)</label>
                 <div id="photoGrid" class="grid grid-cols-4 gap-2"></div>
             </div>
-           
+          
             <!-- TANGGAL -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div>
@@ -154,12 +153,12 @@
                     <div><label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase">P4</label><input type="date" id="p4" class="w-full border rounded-lg p-2 text-sm"></div>
                 </div>
             </div>
-           
+          
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase">Keterangan</label>
                 <textarea id="keterangan" rows="3" class="w-full border rounded-xl p-3 text-sm"></textarea>
             </div>
-           
+          
             <button onclick="submitData()" class="w-full bg-blue-600 text-white font-bold py-5 rounded-3xl">SIMPAN DATA KE CLOUD</button>
         </main>
     </div>
@@ -188,8 +187,6 @@
         let currentNearbyRecords = [];
         let existingPhotoUrls = [];
         let isUpdateMode = false;
-        
-        // Variabel global untuk menyimpan koordinat GPS
         let currentLat = null;
         let currentLng = null;
 
@@ -197,11 +194,12 @@
             initPhotoGrid();
             checkSession();
             await loadProvinces();
+
             if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js')
-        .then(() => console.log("Service Worker registered"))
-        .catch(err => console.log("SW failed"));
-}
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(() => console.log("Service Worker registered"))
+                    .catch(err => console.log("SW failed"));
+            }
         };
 
         function showLoginForm() {
@@ -242,7 +240,7 @@
             const email = document.getElementById('regEmail').value.trim();
             const pass = document.getElementById('regPass').value.trim();
             if (!name || !email || !pass) return alert("Nama, Email, dan Password harus diisi!");
-           
+          
             const { data, error } = await supabaseClient.auth.signUp({ email, password: pass });
             if (error) return alert("Registrasi gagal: " + error.message);
 
@@ -282,7 +280,7 @@
                 div.className = 'aspect-square bg-gray-100 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer relative overflow-hidden';
                 div.innerHTML = `
                     <input type="file" accept="image/*" capture="environment" hidden class="photoInput">
-                    <img class="absolute inset-0 w-full h-full object-cover hidden photoPreview" 
+                    <img class="absolute inset-0 w-full h-full object-cover hidden photoPreview"
                          onerror="this.style.display='none'; this.parentElement.querySelector('.error-text').style.display='flex'">
                     <i class="fas fa-camera text-3xl text-gray-300"></i>
                     <div class="error-text absolute inset-0 hidden flex-col items-center justify-center text-red-500 text-xs text-center p-1">
@@ -325,14 +323,12 @@
         function displayExistingPhotos() {
             const grid = document.getElementById('photoGrid');
             const slots = grid.children;
-
             for (let slot of slots) {
                 const preview = slot.querySelector('.photoPreview');
                 const icon = slot.querySelector('i');
                 const delBtn = slot.querySelector('.delete-btn');
                 const input = slot.querySelector('.photoInput');
                 const errorText = slot.querySelector('.error-text');
-
                 preview.src = '';
                 preview.classList.add('hidden');
                 icon.classList.remove('hidden');
@@ -340,20 +336,17 @@
                 input.value = '';
                 if (errorText) errorText.style.display = 'none';
             }
-
             existingPhotoUrls.forEach((originalUrl, index) => {
                 if (index < 4) {
                     const slot = slots[index];
                     const preview = slot.querySelector('.photoPreview');
                     const icon = slot.querySelector('i');
                     const delBtn = slot.querySelector('.delete-btn');
-
                     const proxiedUrl = getProxiedImageUrl(originalUrl);
                     preview.src = proxiedUrl;
                     preview.classList.remove('hidden');
                     icon.classList.add('hidden');
                     delBtn.classList.remove('hidden');
-
                     delBtn.onclick = (e) => {
                         e.stopImmediatePropagation();
                         existingPhotoUrls.splice(index, 1);
@@ -430,7 +423,7 @@
             }
         }
 
-        // ==================== DETEKSI LOKASI (SUDAH DIPERBAIKI) ====================
+        // ==================== DETEKSI LOKASI ====================
         function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
             const R = 6371e3;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -489,15 +482,11 @@
             modal.classList.remove('hidden');
         }
 
-        // ==================== PERBAIKAN BUG DI SINI ====================
         function chooseCreateNew() {
             document.getElementById('locationChoiceModal').classList.add('hidden');
-            
-            // Gunakan koordinat global yang sudah disimpan
             if (currentLat && currentLng) {
                 autoFillWilayah(currentLat, currentLng);
             } else {
-                // Fallback: coba baca dari input
                 const gps = document.getElementById('lokasiGPS').value;
                 const match = gps.match(/q=([-\d.]+),([-\d.]+)/);
                 if (match) {
@@ -514,11 +503,8 @@
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
-                
-                // Simpan ke variabel global
                 currentLat = lat;
                 currentLng = lng;
-                
                 document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=${lat},${lng}`;
                 
                 const hasNearby = await checkExistingNearby(lat, lng);
@@ -530,22 +516,35 @@
             }, { enableHighAccuracy: true });
         }
 
+        // ==================== FUNGSI autoFillWilayah YANG SUDAH DIPERBAIKI ====================
         async function autoFillWilayah(lat, lng) {
             try {
                 const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=id`;
                 const res = await fetch(url);
                 const data = await res.json();
-                if (!data || !data.address) return;
+
+                if (!data || !data.address) {
+                    alert("Gagal membaca data lokasi dari server.");
+                    return;
+                }
 
                 const addr = data.address;
-                const satProv = normalize(addr.state || addr.region || "");
+                let provinceName = addr.state || addr.region || addr.province || addr.state_district || "";
+                const satProv = normalize(provinceName);
                 const provOpts = document.getElementById('selProvinsi').options;
 
                 let provinceMatched = false;
+
                 for (let i = 1; i < provOpts.length; i++) {
-                    const pNameNorm = normalize(provOpts[i].text);
+                    const optionText = provOpts[i].text;
+                    const pNameNorm = normalize(optionText);
+
                     const isExact = satProv === pNameNorm;
-                    const isStrongMatch = (satProv.includes(pNameNorm) && pNameNorm.length >= 5) || (pNameNorm.includes(satProv) && satProv.length >= 5);
+                    const isStrongMatch = 
+                        (satProv.includes(pNameNorm) && pNameNorm.length >= 4) || 
+                        (pNameNorm.includes(satProv) && satProv.length >= 4) ||
+                        (satProv.split(' ').some(w => w.length > 3 && pNameNorm.includes(w)));
+
                     if (isExact || isStrongMatch) {
                         document.getElementById('selProvinsi').value = provOpts[i].value;
                         await loadCities(provOpts[i].value);
@@ -553,11 +552,14 @@
                         break;
                     }
                 }
+
                 if (!provinceMatched) {
-                    alert("Gagal mendeteksi Provinsi otomatis. Silakan pilih manual.");
+                    console.log("Nama provinsi dari GPS:", provinceName);
+                    alert("Gagal mendeteksi Provinsi otomatis.\n\nSilakan pilih manual.");
                     return;
                 }
 
+                // Kota
                 const satKota = normalize(addr.city || addr.county || addr.town || addr.municipality || "");
                 const kotaOpts = document.getElementById('selKota').options;
                 for (let i = 1; i < kotaOpts.length; i++) {
@@ -569,13 +571,20 @@
                     }
                 }
 
-                const potentialKec = [addr.suburb, addr.district, addr.village, addr.municipality, addr.town, addr.city_district].filter(Boolean).map(n => normalize(n)).filter(n => n.length > 2);
+                // Kecamatan
+                const potentialKec = [addr.suburb, addr.district, addr.village, addr.municipality, addr.town, addr.city_district]
+                    .filter(Boolean).map(n => normalize(n)).filter(n => n.length > 2);
+
                 const kecOpts = document.getElementById('selKecamatan').options;
                 let foundKec = false;
+
                 for (let target of potentialKec) {
                     for (let i = 1; i < kecOpts.length; i++) {
                         const optNorm = normalize(kecOpts[i].text);
-                        const isMatch = optNorm === target || optNorm.includes(target) || target.includes(optNorm) || (target.split(' ').some(w => w.length > 3 && optNorm.includes(w)) && optNorm.split(' ').some(w => w.length > 3 && target.includes(w)));
+                        const isMatch = optNorm === target || optNorm.includes(target) || target.includes(optNorm) ||
+                            (target.split(' ').some(w => w.length > 3 && optNorm.includes(w)) && 
+                             optNorm.split(' ').some(w => w.length > 3 && target.includes(w)));
+                        
                         if (isMatch) {
                             document.getElementById('selKecamatan').value = kecOpts[i].value;
                             foundKec = true;
@@ -586,8 +595,9 @@
                 }
 
                 if (foundKec) await generateIDManual();
+
             } catch (e) {
-                console.error(e);
+                console.error("Error autoFillWilayah:", e);
                 alert("Terjadi kesalahan saat mendeteksi lokasi.");
             }
         }
@@ -619,7 +629,6 @@
 
         function getShortProv(fullName) {
             const n = fullName.toUpperCase().trim();
-            
             const provinceMap = {
                 "ACEH": "Aceh", "SUMATERA UTARA": "Sumut", "SUMATERA BARAT": "Sumbar",
                 "RIAU": "Riau", "JAMBI": "Jambi", "SUMATERA SELATAN": "Sumsel",
@@ -635,7 +644,6 @@
                 "PAPUA BARAT": "Papbar", "PAPUA SELATAN": "Papsel", "PAPUA TENGAH": "Papteng",
                 "PAPUA PEGUNUNGAN": "Papeg", "PAPUA BARAT DAYA": "PapbarDaya"
             };
-
             for (const [key, value] of Object.entries(provinceMap)) {
                 if (n.includes(key)) return value;
             }
