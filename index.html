@@ -209,13 +209,11 @@
             document.getElementById('registerForm').classList.remove('hidden');
         }
 
-        // ==================== AUTH + NAMA DARI TABEL MEMBERS ====================
         async function checkSession() {
             const { data: { user } } = await supabaseClient.auth.getUser();
             if (user) {
                 activeUser = user;
 
-                // Ambil nama dari tabel members berdasarkan id
                 const { data: member } = await supabaseClient
                     .from('members')
                     .select('full_name')
@@ -259,7 +257,6 @@
                 return;
             }
            
-            // 1. Buat akun di auth
             const { data, error } = await supabaseClient.auth.signUp({ email, password: pass });
            
             if (error) {
@@ -267,7 +264,6 @@
                 return;
             }
 
-            // 2. Simpan ke tabel members (menggunakan kolom id dan full_name)
             const { error: memberError } = await supabaseClient
                 .from('members')
                 .insert({
@@ -290,7 +286,7 @@
             location.reload();
         }
 
-        // ==================== FOTO GRID ====================
+        // ==================== FOTO GRID (DENGAN ERROR HANDLING) ====================
         function initPhotoGrid() {
             const grid = document.getElementById('photoGrid');
             grid.innerHTML = '';
@@ -299,8 +295,13 @@
                 div.className = 'aspect-square bg-gray-100 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer relative overflow-hidden';
                 div.innerHTML = `
                     <input type="file" accept="image/*" capture="environment" hidden class="photoInput">
-                    <img class="absolute inset-0 w-full h-full object-cover hidden photoPreview">
+                    <img class="absolute inset-0 w-full h-full object-cover hidden photoPreview" 
+                         onerror="this.style.display='none'; this.parentElement.querySelector('.error-text').style.display='flex'">
                     <i class="fas fa-camera text-3xl text-gray-300"></i>
+                    <div class="error-text absolute inset-0 hidden flex-col items-center justify-center text-red-500 text-xs text-center p-1">
+                        <i class="fas fa-exclamation-triangle text-lg mb-1"></i>
+                        <span>Gagal memuat</span>
+                    </div>
                     <button class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full hidden delete-btn">×</button>
                 `;
                 const input = div.querySelector('.photoInput');
@@ -337,27 +338,34 @@
         function displayExistingPhotos() {
             const grid = document.getElementById('photoGrid');
             const slots = grid.children;
+
             for (let slot of slots) {
                 const preview = slot.querySelector('.photoPreview');
                 const icon = slot.querySelector('i');
                 const delBtn = slot.querySelector('.delete-btn');
                 const input = slot.querySelector('.photoInput');
+                const errorText = slot.querySelector('.error-text');
+
                 preview.src = '';
                 preview.classList.add('hidden');
                 icon.classList.remove('hidden');
                 delBtn.classList.add('hidden');
                 input.value = '';
+                if (errorText) errorText.style.display = 'none';
             }
+
             existingPhotoUrls.forEach((url, index) => {
                 if (index < 4) {
                     const slot = slots[index];
                     const preview = slot.querySelector('.photoPreview');
                     const icon = slot.querySelector('i');
                     const delBtn = slot.querySelector('.delete-btn');
+
                     preview.src = url;
                     preview.classList.remove('hidden');
                     icon.classList.add('hidden');
                     delBtn.classList.remove('hidden');
+
                     delBtn.onclick = (e) => {
                         e.stopImmediatePropagation();
                         existingPhotoUrls.splice(index, 1);
@@ -387,7 +395,7 @@
             existingPhotoUrls = data["Foto"] ? data["Foto"].split(',') : [];
             isUpdateMode = true;
             displayExistingPhotos();
-            alert("✅ Data lama dimuat termasuk fotonya.");
+            alert("✅ Data lama dimuat.");
         }
 
         async function submitData() {
