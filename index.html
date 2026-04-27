@@ -188,6 +188,10 @@
         let currentNearbyRecords = [];
         let existingPhotoUrls = [];
         let isUpdateMode = false;
+        
+        // Variabel global untuk menyimpan koordinat GPS
+        let currentLat = null;
+        let currentLng = null;
 
         window.onload = async () => {
             initPhotoGrid();
@@ -421,7 +425,7 @@
             }
         }
 
-        // ==================== DETEKSI LOKASI ====================
+        // ==================== DETEKSI LOKASI (SUDAH DIPERBAIKI) ====================
         function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
             const R = 6371e3;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -480,21 +484,42 @@
             modal.classList.remove('hidden');
         }
 
+        // ==================== PERBAIKAN BUG DI SINI ====================
         function chooseCreateNew() {
             document.getElementById('locationChoiceModal').classList.add('hidden');
-            const gps = document.getElementById('lokasiGPS').value;
-            const match = gps.match(/q=([-\d.]+),([-\d.]+)/);
-            if (match) autoFillWilayah(parseFloat(match[1]), parseFloat(match[2]));
+            
+            // Gunakan koordinat global yang sudah disimpan
+            if (currentLat && currentLng) {
+                autoFillWilayah(currentLat, currentLng);
+            } else {
+                // Fallback: coba baca dari input
+                const gps = document.getElementById('lokasiGPS').value;
+                const match = gps.match(/q=([-\d.]+),([-\d.]+)/);
+                if (match) {
+                    const lat = parseFloat(match[1]);
+                    const lng = parseFloat(match[2]);
+                    autoFillWilayah(lat, lng);
+                } else {
+                    alert("Gagal membaca koordinat. Silakan deteksi GPS ulang.");
+                }
+            }
         }
 
         function detectGPS() {
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
+                
+                // Simpan ke variabel global
+                currentLat = lat;
+                currentLng = lng;
+                
                 document.getElementById('lokasiGPS').value = `https://maps.google.com/?q=${lat},${lng}`;
-               
+                
                 const hasNearby = await checkExistingNearby(lat, lng);
-                if (!hasNearby) await autoFillWilayah(lat, lng);
+                if (!hasNearby) {
+                    await autoFillWilayah(lat, lng);
+                }
             }, (e) => {
                 alert("GPS Error: " + e.message);
             }, { enableHighAccuracy: true });
@@ -558,6 +583,7 @@
                 if (foundKec) await generateIDManual();
             } catch (e) {
                 console.error(e);
+                alert("Terjadi kesalahan saat mendeteksi lokasi.");
             }
         }
 
@@ -586,58 +612,28 @@
             document.getElementById('idDemplot').value = prefix + "_" + next.toString().padStart(3, '0');
         }
 
-        // ==================== FUNGSI getShortProv YANG LENGKAP ====================
         function getShortProv(fullName) {
             const n = fullName.toUpperCase().trim();
             
             const provinceMap = {
-                "ACEH": "Aceh",
-                "SUMATERA UTARA": "Sumut",
-                "SUMATERA BARAT": "Sumbar",
-                "RIAU": "Riau",
-                "JAMBI": "Jambi",
-                "SUMATERA SELATAN": "Sumsel",
-                "BENGKULU": "Bengkulu",
-                "LAMPUNG": "Lampung",
-                "KEPULAUAN BANGKA BELITUNG": "Babel",
-                "KEPULAUAN RIAU": "Kepri",
-                "DKI JAKARTA": "DKI",
-                "JAWA BARAT": "Jabar",
-                "JAWA TENGAH": "Jateng",
-                "DAERAH ISTIMEWA YOGYAKARTA": "DIY",
-                "JAWA TIMUR": "Jatim",
-                "BANTEN": "Banten",
-                "BALI": "Bali",
-                "NUSA TENGGARA BARAT": "NTB",
-                "NUSA TENGGARA TIMUR": "NTT",
-                "KALIMANTAN BARAT": "Kalbar",
-                "KALIMANTAN TENGAH": "Kalteng",
-                "KALIMANTAN SELATAN": "Kalsel",
-                "KALIMANTAN TIMUR": "Kaltim",
-                "KALIMANTAN UTARA": "Kaltara",
-                "SULAWESI UTARA": "Sulut",
-                "SULAWESI TENGAH": "Sulteng",
-                "SULAWESI SELATAN": "Sulsel",
-                "SULAWESI TENGGARA": "Sultra",
-                "GORONTALO": "Gorontalo",
-                "SULAWESI BARAT": "Sulbar",
-                "MALUKU": "Maluku",
-                "MALUKU UTARA": "Malut",
-                "PAPUA": "Papua",
-                "PAPUA BARAT": "Papbar",
-                "PAPUA SELATAN": "Papsel",
-                "PAPUA TENGAH": "Papteng",
-                "PAPUA PEGUNUNGAN": "Papeg",
-                "PAPUA BARAT DAYA": "PapbarDaya"
+                "ACEH": "Aceh", "SUMATERA UTARA": "Sumut", "SUMATERA BARAT": "Sumbar",
+                "RIAU": "Riau", "JAMBI": "Jambi", "SUMATERA SELATAN": "Sumsel",
+                "BENGKULU": "Bengkulu", "LAMPUNG": "Lampung", "KEPULAUAN BANGKA BELITUNG": "Babel",
+                "KEPULAUAN RIAU": "Kepri", "DKI JAKARTA": "DKI", "JAWA BARAT": "Jabar",
+                "JAWA TENGAH": "Jateng", "DAERAH ISTIMEWA YOGYAKARTA": "DIY", "JAWA TIMUR": "Jatim",
+                "BANTEN": "Banten", "BALI": "Bali", "NUSA TENGGARA BARAT": "NTB",
+                "NUSA TENGGARA TIMUR": "NTT", "KALIMANTAN BARAT": "Kalbar", "KALIMANTAN TENGAH": "Kalteng",
+                "KALIMANTAN SELATAN": "Kalsel", "KALIMANTAN TIMUR": "Kaltim", "KALIMANTAN UTARA": "Kaltara",
+                "SULAWESI UTARA": "Sulut", "SULAWESI TENGAH": "Sulteng", "SULAWESI SELATAN": "Sulsel",
+                "SULAWESI TENGGARA": "Sultra", "GORONTALO": "Gorontalo", "SULAWESI BARAT": "Sulbar",
+                "MALUKU": "Maluku", "MALUKU UTARA": "Malut", "PAPUA": "Papua",
+                "PAPUA BARAT": "Papbar", "PAPUA SELATAN": "Papsel", "PAPUA TENGAH": "Papteng",
+                "PAPUA PEGUNUNGAN": "Papeg", "PAPUA BARAT DAYA": "PapbarDaya"
             };
 
             for (const [key, value] of Object.entries(provinceMap)) {
-                if (n.includes(key)) {
-                    return value;
-                }
+                if (n.includes(key)) return value;
             }
-            
-            // Fallback jika tidak ditemukan
             return toPascalCaseID(fullName);
         }
 
