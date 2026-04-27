@@ -30,7 +30,6 @@
             <div class="text-center mb-8">
                 <img src="calsindo.jpeg" class="h-20 mx-auto mb-4 object-contain" alt="Logo Calsindo">
                 <h2 class="text-2xl font-bold text-gray-800">Aplikasi Demplot Calsindo</h2>
-                <p class="text-gray-500 text-sm">Gunakan akun Supabase Anda</p>
             </div>
 
             <div class="space-y-4">
@@ -60,7 +59,7 @@
                 <i class="fas fa-location-crosshairs text-xl"></i>
                 DETEKSI LOKASI & ID OTOMATIS
             </button>
-
+            
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -221,12 +220,29 @@
             location.reload();
         }
 
+        // --- HELPER FUNGSI TATA BAHASA (TITLE CASE) ---
+        function toTitleCaseDisplay(str) {
+            return str.replace(/KABUPATEN |KOTA |KECAMATAN |KEC\. /gi, "")
+                      .toLowerCase()
+                      .split(' ')
+                      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                      .join(' ');
+        }
+
+        function toPascalCaseID(str) {
+            return str.replace(/KABUPATEN |KOTA |KECAMATAN |KEC\. /gi, "")
+                      .toLowerCase()
+                      .split(' ')
+                      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                      .join('');
+        }
+
         // --- GPS & REGION LOGIC (API EMSIFA) ---
         async function loadProvinces() {
             const res = await fetch("https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json");
             const data = await res.json();
             let html = '<option value="">Pilih Prov</option>';
-            data.forEach(p => html += `<option value="${p.id}" data-name="${p.name}">${p.name}</option>`);
+            data.forEach(p => html += `<option value="${p.id}" data-name="${p.name}">${toTitleCaseDisplay(p.name)}</option>`);
             document.getElementById('selProvinsi').innerHTML = html;
         }
 
@@ -235,7 +251,7 @@
             const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${pid}.json`);
             const data = await res.json();
             let html = '<option value="">Pilih Kota</option>';
-            data.forEach(c => html += `<option value="${c.id}" data-name="${c.name}">${c.name}</option>`);
+            data.forEach(c => html += `<option value="${c.id}" data-name="${c.name}">${toTitleCaseDisplay(c.name)}</option>`);
             document.getElementById('selKota').innerHTML = html;
         }
 
@@ -244,7 +260,7 @@
             const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${cid}.json`);
             const data = await res.json();
             let html = '<option value="">Pilih Kecamatan</option>';
-            data.forEach(d => html += `<option value="${d.id}" data-name="${d.name}">${d.name}</option>`);
+            data.forEach(d => html += `<option value="${d.id}" data-name="${d.name}">${toTitleCaseDisplay(d.name)}</option>`);
             document.getElementById('selKecamatan').innerHTML = html;
         }
 
@@ -270,9 +286,23 @@
             if (n.includes("JAWA BARAT")) return "Jabar";
             if (n.includes("NUSA TENGGARA BARAT")) return "NTB";
             if (n.includes("NUSA TENGGARA TIMUR")) return "NTT";
+            if (n.includes("SUMATERA UTARA")) return "Sumut";
+            if (n.includes("SUMATERA BARAT")) return "Sumbar";
+            if (n.includes("SUMATERA SELATAN")) return "Sumsel";
+            if (n.includes("KALIMANTAN BARAT")) return "Kalbar";
+            if (n.includes("KALIMANTAN TENGAH")) return "Kalteng";
+            if (n.includes("KALIMANTAN SELATAN")) return "Kalsel";
+            if (n.includes("KALIMANTAN TIMUR")) return "Kaltim";
+            if (n.includes("SULAWESI UTARA")) return "Sulut";
+            if (n.includes("SULAWESI TENGAH")) return "Sulteng";
+            if (n.includes("SULAWESI SELATAN")) return "Sulsel";
+            if (n.includes("SULAWESI TENGGARA")) return "Sultra";
+            if (n.includes("SULAWESI BARAT")) return "Sulbar";
+            if (n.includes("MALUKU UTARA")) return "Malut";
+            if (n.includes("PAPUA BARAT")) return "Pabar";
             if (n.includes("YOGYAKARTA")) return "DIY";
             if (n.includes("JAKARTA")) return "DKI";
-            return n.replace(/\s/g, "").substring(0,5);
+            return toPascalCaseID(fullName);
         }
 
         async function generateIDManual() {
@@ -280,9 +310,11 @@
             const k = document.querySelector('#selKota option:checked').dataset.name;
             const d = document.querySelector('#selKecamatan option:checked').dataset.name;
 
+            if(!p || !k || !d) return;
+
             const cleanP = getShortProv(p);
-            const cleanK = k.replace(/KABUPATEN|KOTA|\s/gi, "");
-            const cleanD = d.replace(/KECAMATAN|KEC|\s/gi, "");
+            const cleanK = toPascalCaseID(k);
+            const cleanD = toPascalCaseID(d);
             
             const prefix = `${cleanP}_${cleanK}_${cleanD}`;
             showLoading(true, "Mengecek ID Terakhir...");
