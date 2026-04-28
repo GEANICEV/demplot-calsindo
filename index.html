@@ -298,7 +298,7 @@
             location.reload();
         }
 
-        // ==================== FOTO (KAMERA + GALERI) ====================
+        // ==================== FOTO ====================
         function getProxiedImageUrl(originalUrl) {
             if (!originalUrl) return '';
             if (originalUrl.includes('drive.google.com')) {
@@ -318,7 +318,6 @@
                 div.innerHTML = `
                     <input type="file" accept="image/*" capture="environment" hidden class="cameraInput">
                     <input type="file" accept="image/*" hidden class="galleryInput">
-                    
                     <img class="absolute inset-0 w-full h-full object-cover hidden photoPreview"
                          onerror="this.style.display='none'; this.parentElement.querySelector('.error-text').style.display='flex'">
                     <i class="fas fa-camera text-3xl text-gray-300"></i>
@@ -498,7 +497,7 @@
             }
         }
 
-        // ==================== DETEKSI LOKASI (DIPERBAIKI) ====================
+        // ==================== DETEKSI LOKASI (DIPERBAIKI LAGI) ====================
         function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
             const R = 6371e3;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -591,7 +590,7 @@
             }, { enableHighAccuracy: true });
         }
 
-        // ==================== autoFillWilayah (DIPERBAIKI) ====================
+        // ==================== autoFillWilayah (DIPERBAIKI UNTUK DRIYOREJO) ====================
         async function autoFillWilayah(lat, lng) {
             try {
                 const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=id`;
@@ -604,6 +603,7 @@
                 }
 
                 const addr = data.address;
+                console.log("Nominatim Address:", addr); // ← LOG LENGKAP (buka Console F12)
 
                 // PROVINSI
                 const provinceName = addr.state || addr.region || addr.province || "";
@@ -642,7 +642,7 @@
                     }
                 }
 
-                // KECAMATAN (DIPERBAIKI)
+                // KECAMATAN (DIPERBAIKI UNTUK DRIYOREJO)
                 const possibleKecFields = [
                     addr.suburb, addr.district, addr.village, addr.municipality,
                     addr.city_district, addr.hamlet, addr.neighbourhood, addr.town, addr.city
@@ -652,19 +652,23 @@
                 let foundKec = false;
 
                 for (let fieldValue of possibleKecFields) {
-                    const target = normalize(fieldValue);
+                    let target = normalize(fieldValue);
                     if (target.length < 3) continue;
 
+                    // Hapus kata "kecamatan" kalau ada
+                    target = target.replace(/kecamatan/g, '').trim();
+
                     for (let i = 1; i < kecOpts.length; i++) {
-                        const optNorm = normalize(kecOpts[i].text);
+                        let optNorm = normalize(kecOpts[i].text);
+                        optNorm = optNorm.replace(/kecamatan/g, '').trim();
+
                         const isExact = target === optNorm;
                         const contains = target.includes(optNorm) || optNorm.includes(target);
-                        const targetWords = target.split(' ').filter(w => w.length > 3);
-                        const optWords = optNorm.split(' ').filter(w => w.length > 3);
-                        const wordMatch = targetWords.some(w => optNorm.includes(w)) && 
-                                         optWords.some(w => target.includes(w));
+                        
+                        // Partial match (3 huruf pertama sama)
+                        const partial = target.substring(0, 4) === optNorm.substring(0, 4);
 
-                        if (isExact || contains || wordMatch) {
+                        if (isExact || contains || partial) {
                             document.getElementById('selKecamatan').value = kecOpts[i].value;
                             foundKec = true;
                             break;
@@ -677,6 +681,7 @@
 
                 if (!foundKec) {
                     console.log("Kecamatan tidak terdeteksi otomatis. Silakan pilih manual.");
+                    alert("Kecamatan tidak terdeteksi otomatis.\nSilakan pilih manual dari dropdown.");
                 }
 
             } catch (e) {
