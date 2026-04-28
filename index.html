@@ -73,7 +73,6 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <!-- SYNC BUTTON -->
                 <button onclick="manualSync()" class="relative flex items-center justify-center w-10 h-10">
                     <i class="fas fa-cloud-upload-alt text-2xl" id="syncIcon"></i>
                     <span id="pendingBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full hidden">0</span>
@@ -106,12 +105,6 @@
                 <div>
                     <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase">Kecamatan</label>
                     <select id="selKecamatan" onchange="generateIDManual()" class="w-full border rounded-lg p-2 text-sm h-10 outline-none"></select>
-                </div>
-             
-                <div id="locationStatus" class="mt-2 text-xs text-emerald-600 flex items-center gap-2 hidden">
-                    <i class="fas fa-lock mr-1"></i>
-                    <span id="statusText">Lokasi &amp; ID otomatis dari GPS</span>
-                    <button onclick="unlockLocation()" class="ml-auto text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Buka Kunci</button>
                 </div>
             </div>
          
@@ -233,25 +226,70 @@
         let currentLat = null;
         let currentLng = null;
         let currentPhotoSlot = null;
-        let pendingData = [];
 
-        // ==================== OFFLINE SUPPORT ====================
-        function loadPendingData() {
-            const saved = localStorage.getItem('pendingDemplot');
-            if (saved) pendingData = JSON.parse(saved);
-            updatePendingBadge();
+        // ==================== INDEXEDDB ====================
+        let db;
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open("CalsindoDB", 1);
+                
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    if (!db.objectStoreNames.contains("pending")) {
+                        db.createObjectStore("pending", { keyPath: "id_demplot" });
+                    }
+                };
+                
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    updatePendingBadge();
+                    resolve();
+                };
+                
+                request.onerror = (event) => {
+                    console.error("IndexedDB error:", event);
+                    reject(event);
+                };
+            });
         }
 
-        function savePendingData() {
-            localStorage.setItem('pendingDemplot', JSON.stringify(pendingData));
-            updatePendingBadge();
+        function saveToPending(data) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(["pending"], "readwrite");
+                const store = tx.objectStore("pending");
+                const request = store.put(data);
+                request.onsuccess = () => { updatePendingBadge(); resolve(); };
+                request.onerror = reject;
+            });
         }
 
-        function updatePendingBadge() {
+        function getAllPending() {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(["pending"], "readonly");
+                const store = tx.objectStore("pending");
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = reject;
+            });
+        }
+
+        function deleteFromPending(id) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(["pending"], "readwrite");
+                const store = tx.objectStore("pending");
+                const request = store.delete(id);
+                request.onsuccess = () => { updatePendingBadge(); resolve(); };
+                request.onerror = reject;
+            });
+        }
+
+        async function updatePendingBadge() {
+            const pending = await getAllPending();
             const badge = document.getElementById('pendingBadge');
             const icon = document.getElementById('syncIcon');
-            if (pendingData.length > 0) {
-                badge.textContent = pendingData.length;
+            
+            if (pending.length > 0) {
+                badge.textContent = pending.length;
                 badge.classList.remove('hidden');
                 icon.classList.add('text-red-500');
                 icon.classList.remove('text-green-500');
@@ -262,99 +300,7 @@
             }
         }
 
-        async function manualSync() {
-            if (pendingData.length === 0) {
-                alert("Tidak ada data pending.");
-                return;
-            }
-            const result = await processPendingQueue();
-            alert(result);
-        }
-
-        async function processPendingQueue() {
-            let success = 0;
-            let fail = 0;
-
-            for (let i = pendingData.length - 1; i >= 0; i--) {
-                const item = pendingData[i];
-                try {
-                    // Upload foto dulu
-                    const finalPhotos = await uploadPhotosFromPending(item.photos || []);
-                    
-                    const payload = {
-                        "ID_Demplot": item.id_demplot,
-                        "Nama Pemilik Demplot": item.nama_pemilik,
-                        "Telepon": item.telepon || "-",
-                        "Luasan Demplot": item.luasan,
-                        "Lokasi Demplot": item.lokasi,
-                        "Foto": finalPhotos,
-                        "Tanggal Tanam": item.tgl_tanam || null,
-                        "Tanggal Perlakuan 1": item.p1 || null,
-                        "Tanggal Perlakuan 2": item.p2 || null,
-                        "Tanggal Perlakuan 3": item.p3 || null,
-                        "Tanggal Perlakuan 4": item.p4 || null,
-                        "Keterangan": item.keterangan,
-                        "last_edited": item.last_updated_by,
-                        "created_by": item.created_by
-                    };
-
-                    await supabaseClient.from('demplot_monitoring').upsert(payload);
-                    pendingData.splice(i, 1);
-                    success++;
-                } catch (e) {
-                    console.error(e);
-                    fail++;
-                }
-            }
-            savePendingData();
-            return `Sukses: ${success}, Gagal: ${fail}`;
-        }
-
-        async function uploadPhotosFromPending(photoDataUrls) {
-            const urls = [];
-            for (let dataUrl of photoDataUrls) {
-                if (dataUrl.startsWith('http')) {
-                    urls.push(dataUrl);
-                    continue;
-                }
-                // Compress
-                const compressed = await compressImage(dataUrl);
-                const base64 = compressed.split(',')[1];
-                const fileName = "IMG_" + Date.now() + ".jpg";
-                
-                const res = await fetch(GAS_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ filename: fileName, image: base64 })
-                });
-                const j = await res.json();
-                if (j.status === "success") urls.push(j.url);
-            }
-            return urls.join(',');
-        }
-
-        function compressImage(dataUrl) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-                    if (width > 1024) {
-                        const ratio = 1024 / width;
-                        width = 1024;
-                        height = Math.round(height * ratio);
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.7));
-                };
-                img.src = dataUrl;
-            });
-        }
-
-        // ==================== FOTO (KAMERA + GALERI) ====================
+        // ==================== FOTO ====================
         function getProxiedImageUrl(originalUrl) {
             if (!originalUrl) return '';
             if (originalUrl.includes('drive.google.com')) {
@@ -487,7 +433,7 @@
             if (!id) return alert("ID belum ada!");
 
             const inputs = document.querySelectorAll('.cameraInput, .galleryInput');
-            let newPhotoDataUrls = [];
+            let photoDataUrls = [];
 
             for (let inp of inputs) {
                 if (inp.files && inp.files[0]) {
@@ -496,14 +442,14 @@
                         reader.onload = e => resolve(e.target.result);
                         reader.readAsDataURL(inp.files[0]);
                     });
-                    newPhotoDataUrls.push(dataUrl);
+                    photoDataUrls.push(dataUrl);
                 }
             }
 
             const payload = {
                 id_demplot: id,
                 nama_pemilik: document.getElementById('namaPemilik').value,
-                telepon: document.getElementById('telepon').value,
+                telepon: document.getElementById('telepon').value || "-",
                 luasan: document.getElementById('luasan').value,
                 lokasi: document.getElementById('lokasiGPS').value,
                 tgl_tanam: document.getElementById('tglTanam').value || null,
@@ -514,14 +460,23 @@
                 keterangan: document.getElementById('keterangan').value,
                 last_updated_by: activeUser?.email || "Unknown",
                 created_by: activeUser?.email || "Unknown",
-                photos: newPhotoDataUrls
+                photos: photoDataUrls,
+                timestamp: Date.now()
             };
 
-            // Simpan ke pending queue
-            pendingData.unshift(payload);
-            savePendingData();
-
+            await saveToPending(payload);
+            
             // Reset form
+            resetForm();
+
+            alert("Data disimpan offline. Tekan tombol Sync untuk upload.");
+
+            if (navigator.onLine) {
+                setTimeout(() => processPendingQueue(), 800);
+            }
+        }
+
+        function resetForm() {
             document.getElementById('idDemplot').value = '';
             document.getElementById('namaPemilik').value = '';
             document.getElementById('telepon').value = '';
@@ -544,13 +499,127 @@
                 icon.classList.remove('hidden');
                 delBtn.classList.add('hidden');
             }
+        }
 
-            alert("Data disimpan offline. Tekan tombol Sync untuk upload.");
+        // ==================== SYNC & PHOTO UPLOAD ====================
+        async function compressImage(dataUrl) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > 1024) {
+                        const ratio = 1024 / width;
+                        width = 1024;
+                        height = Math.round(height * ratio);
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7));
+                };
+                img.src = dataUrl;
+            });
+        }
 
-            // Auto sync jika online
-            if (navigator.onLine) {
-                setTimeout(() => processPendingQueue(), 1000);
+        async function uploadToDrive(dataUrl, fileName) {
+            try {
+                const compressed = await compressImage(dataUrl);
+                const base64 = compressed.split(',')[1];
+
+                const res = await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ filename: fileName, image: base64 })
+                });
+                const j = await res.json();
+                return j.status === "success" ? j.url : null;
+            } catch (e) {
+                console.error("Upload error:", e);
+                return null;
             }
+        }
+
+        async function processPendingQueue() {
+            const pending = await getAllPending();
+            if (pending.length === 0) return "Tidak ada data pending.";
+
+            let success = 0;
+            let fail = 0;
+
+            for (const item of pending) {
+                try {
+                    // 1. Upload foto ke Drive
+                    const finalPhotoUrls = [];
+                    for (let i = 0; i < (item.photos || []).length; i++) {
+                        const photo = item.photos[i];
+                        if (photo.startsWith('http')) {
+                            finalPhotoUrls.push(photo);
+                        } else {
+                            const fileName = `IMG_${item.id_demplot}_${Date.now()}_${i}.jpg`;
+                            const driveUrl = await uploadToDrive(photo, fileName);
+                            if (driveUrl) finalPhotoUrls.push(driveUrl);
+                        }
+                    }
+
+                    // 2. Cek apakah record sudah ada di Supabase (untuk ambil created_by asli)
+                    let finalCreatedBy = item.created_by;
+                    try {
+                        const { data: existing } = await supabaseClient
+                            .from('demplot_monitoring')
+                            .select('created_by')
+                            .eq('ID_Demplot', item.id_demplot)
+                            .single();
+                        
+                        if (existing && existing.created_by) {
+                            finalCreatedBy = existing.created_by;
+                        }
+                    } catch (e) {}
+
+                    // 3. Kirim ke Supabase
+                    const payload = {
+                        "ID_Demplot": item.id_demplot,
+                        "Nama Pemilik Demplot": item.nama_pemilik,
+                        "Telepon": item.telepon,
+                        "Luasan Demplot": item.luasan,
+                        "Lokasi Demplot": item.lokasi,
+                        "Foto": finalPhotoUrls.join(','),
+                        "Tanggal Tanam": item.tgl_tanam,
+                        "Tanggal Perlakuan 1": item.p1,
+                        "Tanggal Perlakuan 2": item.p2,
+                        "Tanggal Perlakuan 3": item.p3,
+                        "Tanggal Perlakuan 4": item.p4,
+                        "Keterangan": item.keterangan,
+                        "last_edited": item.last_updated_by,
+                        "created_by": finalCreatedBy
+                    };
+
+                    await supabaseClient.from('demplot_monitoring').upsert(payload);
+
+                    // 4. Hapus dari pending
+                    await deleteFromPending(item.id_demplot);
+                    success++;
+
+                } catch (e) {
+                    console.error("Sync error for", item.id_demplot, e);
+                    fail++;
+                }
+            }
+
+            await updatePendingBadge();
+            return `Sukses: ${success}, Gagal: ${fail}`;
+        }
+
+        async function manualSync() {
+            const pending = await getAllPending();
+            if (pending.length === 0) {
+                alert("Tidak ada data pending.");
+                return;
+            }
+            
+            const result = await processPendingQueue();
+            alert(result);
         }
 
         // ==================== DETEKSI LOKASI ====================
@@ -567,31 +636,36 @@
                     await autoFillWilayah(lat, lng);
                 }
             }, (e) => {
-                alert("GPS Error: " + e.message);
-            }, { enableHighAccuracy: true });
+                alert("GPS Error: " + e.message + "\nPastikan GPS aktif dan izinkan akses lokasi.");
+            }, { enableHighAccuracy: true, timeout: 10000 });
         }
 
         async function checkExistingNearby(currentLat, currentLng) {
-            const { data, error } = await supabaseClient.from('demplot_monitoring').select('*');
-            if (error || !data) return false;
+            try {
+                const { data, error } = await supabaseClient.from('demplot_monitoring').select('*');
+                if (error || !data) return false;
 
-            const nearby = [];
-            data.forEach(record => {
-                const coords = parseCoordinatesFromUrl(record["Lokasi Demplot"]);
-                if (coords) {
-                    const dist = getDistanceFromLatLonInMeters(currentLat, currentLng, coords.lat, coords.lng);
-                    if (dist <= 50) {
-                        nearby.push(record);
+                const nearby = [];
+                data.forEach(record => {
+                    const coords = parseCoordinatesFromUrl(record["Lokasi Demplot"]);
+                    if (coords) {
+                        const dist = getDistanceFromLatLonInMeters(currentLat, currentLng, coords.lat, coords.lng);
+                        if (dist <= 50) {
+                            nearby.push(record);
+                        }
                     }
-                }
-            });
+                });
 
-            if (nearby.length > 0) {
-                currentNearbyRecords = nearby;
-                showNearbyModal();
-                return true;
+                if (nearby.length > 0) {
+                    currentNearbyRecords = nearby;
+                    showNearbyModal();
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.error(e);
+                return false;
             }
-            return false;
         }
 
         function showNearbyModal() {
@@ -636,7 +710,6 @@
             return R * c;
         }
 
-        // ==================== autoFillWilayah ====================
         async function autoFillWilayah(lat, lng) {
             try {
                 const controller = new AbortController();
@@ -650,8 +723,8 @@
                 if (!data || !data.address) throw new Error("Data kosong");
 
                 const addr = data.address;
-                console.log("Nominatim:", addr);
 
+                // Provinsi
                 const provinceName = addr.state || addr.region || "";
                 const satProv = normalize(provinceName);
                 const provOpts = document.getElementById('selProvinsi').options;
@@ -672,6 +745,7 @@
                     return;
                 }
 
+                // Kota
                 const satKota = normalize(addr.city || addr.county || "");
                 const kotaOpts = document.getElementById('selKota').options;
                 for (let i = 1; i < kotaOpts.length; i++) {
@@ -683,6 +757,7 @@
                     }
                 }
 
+                // Kecamatan
                 const possibleKec = [addr.suburb, addr.district, addr.village, addr.municipality].filter(Boolean);
                 const kecOpts = document.getElementById('selKecamatan').options;
                 let foundKec = false;
@@ -794,13 +869,6 @@
             document.getElementById('selKecamatan').innerHTML = html;
         }
 
-        function unlockLocation() {
-            document.getElementById('selProvinsi').disabled = false;
-            document.getElementById('selKota').disabled = false;
-            document.getElementById('selKecamatan').disabled = false;
-            document.getElementById('locationStatus').classList.add('hidden');
-        }
-
         // ==================== AUTH ====================
         async function checkSession() {
             const { data: { user } } = await supabaseClient.auth.getUser();
@@ -811,7 +879,6 @@
                 document.getElementById('userNameDisplay').innerText = "User: " + displayName;
                 document.getElementById('appView').classList.remove('hidden-view');
                 document.getElementById('authView').classList.add('hidden-view');
-                loadPendingData();
             } else {
                 document.getElementById('authView').classList.remove('hidden-view');
             }
@@ -851,12 +918,12 @@
 
         async function handleLogout() {
             await supabaseClient.auth.signOut();
-            localStorage.removeItem('pendingDemplot');
             location.reload();
         }
 
         // ==================== INIT ====================
         window.onload = async () => {
+            await initDB();
             initPhotoGrid();
             checkSession();
             await loadProvinces();
@@ -865,9 +932,12 @@
                 navigator.serviceWorker.register('service-worker.js');
             }
             
-            // Auto sync saat online
-            window.addEventListener('online', () => {
-                if (pendingData.length > 0) processPendingQueue();
+            window.addEventListener('online', async () => {
+                const pending = await getAllPending();
+                if (pending.length > 0) {
+                    const result = await processPendingQueue();
+                    console.log("Auto sync result:", result);
+                }
             });
         };
     </script>
