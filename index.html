@@ -39,7 +39,7 @@
                     <button onclick="handleLogin()" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl">LOGIN</button>
                     <p class="text-center text-sm text-gray-600">
                         Belum punya akun?
-                        <span onclick="showRegisterForm()" class="text-blue-600 font-semibold cursor-pointer">Daftar di sini</span>
+                        <span id="linkRegister" class="text-blue-600 font-semibold cursor-pointer">Daftar di sini</span>
                     </p>
                 </div>
             </div>
@@ -53,7 +53,6 @@
                     <input type="email" id="regEmail" placeholder="Email" class="w-full border rounded-xl p-4 text-sm">
                     <input type="password" id="regPass" placeholder="Password" class="w-full border rounded-xl p-4 text-sm">
                     
-                    <!-- TOMBOL DAFTAR YANG DIPERBAIKI -->
                     <button id="btnRegister" type="button" 
                             class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl active:bg-emerald-700 transition-all">
                         DAFTAR
@@ -61,7 +60,7 @@
                     
                     <p class="text-center text-sm text-gray-600">
                         Sudah punya akun?
-                        <span onclick="showLoginForm()" class="text-blue-600 font-semibold cursor-pointer">Login di sini</span>
+                        <span id="linkLogin" class="text-blue-600 font-semibold cursor-pointer">Login di sini</span>
                     </p>
                 </div>
             </div>
@@ -427,7 +426,7 @@
             });
         }
 
-        // ==================== REGISTER (DIPERBAIKI) ====================
+        // ==================== REGISTER ====================
         async function handleRegister() {
             const name = document.getElementById('regName').value.trim();
             const email = document.getElementById('regEmail').value.trim();
@@ -441,9 +440,7 @@
                 const { data, error } = await supabaseClient.auth.signUp({
                     email: email,
                     password: pass,
-                    options: {
-                        data: { full_name: name }
-                    }
+                    options: { data: { full_name: name } }
                 });
 
                 if (error) {
@@ -977,11 +974,14 @@
             checkSession();
             await loadProvinces();
             
-            // === EVENT LISTENER UNTUK TOMBOL DAFTAR ===
+            // === EVENT LISTENER UNTUK LINK & TOMBOL ===
+            const linkRegister = document.getElementById('linkRegister');
+            const linkLogin = document.getElementById('linkLogin');
             const btnRegister = document.getElementById('btnRegister');
-            if (btnRegister) {
-                btnRegister.addEventListener('click', handleRegister);
-            }
+
+            if (linkRegister) linkRegister.addEventListener('click', showRegisterForm);
+            if (linkLogin) linkLogin.addEventListener('click', showLoginForm);
+            if (btnRegister) btnRegister.addEventListener('click', handleRegister);
             
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('service-worker.js');
@@ -994,6 +994,17 @@
                 }
             });
         };
+
+        // ==================== FUNGSI SHOW/HIDE FORM ====================
+        function showLoginForm() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('registerForm').classList.add('hidden');
+        }
+
+        function showRegisterForm() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+        }
     </script>
 </body>
 </html>
