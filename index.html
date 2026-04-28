@@ -168,7 +168,7 @@
         <div class="loader w-14 h-14 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>
     </div>
 
-    <!-- MODAL LOKASI (DIPERBAIKI) -->
+    <!-- MODAL LOKASI -->
     <div id="locationChoiceModal" class="fixed inset-0 bg-black/70 hidden z-[200] flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl max-w-sm w-full p-6">
             <h3 class="font-bold text-xl mb-4">Pilih Lahan</h3>
@@ -226,7 +226,7 @@
         let currentLat = null;
         let currentLng = null;
         let currentPhotoSlot = null;
-        let selectedNearbyRecord = null;   // ← Variabel baru untuk fix bug
+        let selectedNearbyRecord = null;
 
         // ==================== INDEXEDDB ====================
         let db;
@@ -419,6 +419,62 @@
                     };
                 }
             });
+        }
+
+        // ==================== REGISTER (DIPERBAIKI) ====================
+        async function handleRegister() {
+            const name = document.getElementById('regName').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const pass = document.getElementById('regPass').value.trim();
+            
+            if (!name || !email || !pass) {
+                return alert("Nama, Email, dan Password harus diisi!");
+            }
+
+            try {
+                const { data, error } = await supabaseClient.auth.signUp({
+                    email: email,
+                    password: pass,
+                    options: {
+                        data: {
+                            full_name: name
+                        }
+                    }
+                });
+
+                if (error) {
+                    console.error("SignUp Error:", error);
+                    return alert("Registrasi gagal: " + error.message);
+                }
+
+                // Jika email confirmation aktif, data.user bisa null
+                if (!data.user) {
+                    alert("Akun berhasil dibuat!\nSilakan cek email Anda untuk konfirmasi, lalu login.");
+                    showLoginForm();
+                    return;
+                }
+
+                // Jika tidak perlu konfirmasi email, simpan ke tabel members
+                const { error: memberError } = await supabaseClient.from('members').insert({
+                    id: data.user.id,
+                    full_name: name,
+                    email: email,
+                    role: 'petugas'
+                });
+
+                if (memberError) {
+                    console.error("Member Insert Error:", memberError);
+                    alert("Akun berhasil dibuat, tapi gagal menyimpan nama.\nSilakan login.");
+                } else {
+                    alert("Akun berhasil dibuat! Silakan login.");
+                }
+
+                showLoginForm();
+
+            } catch (e) {
+                console.error("Register Error:", e);
+                alert("Terjadi kesalahan saat registrasi. Coba lagi.");
+            }
         }
 
         // ==================== SUBMIT DATA ====================
@@ -645,7 +701,6 @@
             }
         }
 
-        // ==================== MODAL LOKASI (DIPERBAIKI) ====================
         function showNearbyModal() {
             const modal = document.getElementById('locationChoiceModal');
             const list = document.getElementById('nearbyList');
@@ -663,7 +718,6 @@
                     <button class="update-btn bg-emerald-600 text-white text-xs px-4 py-2 rounded-xl font-bold">Update</button>
                 `;
                 
-                // Event listener yang lebih stabil
                 const updateBtn = div.querySelector('.update-btn');
                 updateBtn.onclick = () => {
                     selectedNearbyRecord = record;
@@ -683,7 +737,6 @@
             }
         }
 
-        // ==================== PREFILL (DIPERBAIKI) ====================
         async function prefillFromExisting() {
             const modal = document.getElementById('locationChoiceModal');
             modal.classList.add('hidden');
@@ -711,9 +764,7 @@
             isUpdateMode = true;
             displayExistingPhotos();
 
-            // Reset variabel
             selectedNearbyRecord = null;
-
             alert("✅ Data lama dimuat. Silakan edit dan simpan.");
         }
 
@@ -910,29 +961,6 @@
             const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
             if (error) alert("Login gagal: " + error.message);
             else checkSession();
-        }
-
-        async function handleRegister() {
-            const name = document.getElementById('regName').value.trim();
-            const email = document.getElementById('regEmail').value.trim();
-            const pass = document.getElementById('regPass').value.trim();
-            if (!name || !email || !pass) return alert("Nama, Email, dan Password harus diisi!");
-           
-            const { data, error } = await supabaseClient.auth.signUp({ email, password: pass });
-            if (error) return alert("Registrasi gagal: " + error.message);
-
-            const { error: memberError } = await supabaseClient.from('members').insert({
-                id: data.user.id,
-                full_name: name,
-                email: email,
-                role: 'petugas'
-            });
-
-            if (memberError) alert("Gagal menyimpan nama: " + memberError.message);
-            else {
-                alert("Akun berhasil dibuat! Silakan login.");
-                showLoginForm();
-            }
         }
 
         async function handleLogout() {
