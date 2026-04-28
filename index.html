@@ -24,6 +24,7 @@
     </style>
 </head>
 <body class="bg-gray-50">
+
     <!-- AUTH VIEW -->
     <div id="authView" class="min-h-screen flex items-center justify-center p-6">
         <div class="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
@@ -176,7 +177,7 @@
         </div>
     </div>
 
-    <!-- MODAL PILIHAN FOTO (BARU) -->
+    <!-- MODAL PILIHAN FOTO -->
     <div id="photoSourceModal" class="fixed inset-0 bg-black/60 hidden z-[300] flex items-end justify-center">
         <div class="bg-white w-full max-w-md rounded-t-3xl p-6">
             <div class="flex justify-between items-center mb-4">
@@ -185,9 +186,7 @@
             </div>
             
             <div class="space-y-3">
-                <!-- Kamera -->
-                <button onclick="selectCamera()" 
-                        class="w-full flex items-center gap-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold py-4 px-5 rounded-2xl transition-all">
+                <button onclick="selectCamera()" class="w-full flex items-center gap-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold py-4 px-5 rounded-2xl transition-all">
                     <div class="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center">
                         <i class="fas fa-camera text-2xl"></i>
                     </div>
@@ -197,9 +196,7 @@
                     </div>
                 </button>
                 
-                <!-- Galeri -->
-                <button onclick="selectGallery()" 
-                        class="w-full flex items-center gap-4 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold py-4 px-5 rounded-2xl transition-all">
+                <button onclick="selectGallery()" class="w-full flex items-center gap-4 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold py-4 px-5 rounded-2xl transition-all">
                     <div class="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center">
                         <i class="fas fa-images text-2xl"></i>
                     </div>
@@ -228,8 +225,6 @@
         let isUpdateMode = false;
         let currentLat = null;
         let currentLng = null;
-        
-        // Variabel untuk menyimpan slot foto yang sedang dipilih
         let currentPhotoSlot = null;
 
         window.onload = async () => {
@@ -303,7 +298,7 @@
             location.reload();
         }
 
-        // AMBIL FOTO
+        // ==================== FOTO (KAMERA + GALERI) ====================
         function getProxiedImageUrl(originalUrl) {
             if (!originalUrl) return '';
             if (originalUrl.includes('drive.google.com')) {
@@ -321,22 +316,16 @@
                 div.className = 'aspect-square bg-gray-100 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer relative overflow-hidden';
                 
                 div.innerHTML = `
-                    <!-- Input untuk Kamera -->
                     <input type="file" accept="image/*" capture="environment" hidden class="cameraInput">
-                    
-                    <!-- Input untuk Galeri -->
                     <input type="file" accept="image/*" hidden class="galleryInput">
                     
                     <img class="absolute inset-0 w-full h-full object-cover hidden photoPreview"
                          onerror="this.style.display='none'; this.parentElement.querySelector('.error-text').style.display='flex'">
-                    
                     <i class="fas fa-camera text-3xl text-gray-300"></i>
-                    
                     <div class="error-text absolute inset-0 hidden flex-col items-center justify-center text-red-500 text-xs text-center p-1">
                         <i class="fas fa-exclamation-triangle text-lg mb-1"></i>
                         <span>Gagal memuat foto</span>
                     </div>
-                    
                     <button class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full hidden delete-btn">×</button>
                 `;
                 
@@ -346,26 +335,15 @@
                 const icon = div.querySelector('i');
                 const delBtn = div.querySelector('.delete-btn');
 
-                // Klik slot foto → tampilkan pilihan
                 div.onclick = (e) => {
-                    // Jangan buka pilihan kalau klik tombol hapus
                     if (e.target === delBtn) return;
-                    
                     currentPhotoSlot = div;
                     document.getElementById('photoSourceModal').classList.remove('hidden');
                 };
 
-                // Kamera
-                cameraInput.onchange = (e) => {
-                    handlePhotoSelected(e, preview, icon, delBtn, cameraInput);
-                };
+                cameraInput.onchange = (e) => handlePhotoSelected(e, preview, icon, delBtn, cameraInput);
+                galleryInput.onchange = (e) => handlePhotoSelected(e, preview, icon, delBtn, galleryInput);
 
-                // Galeri
-                galleryInput.onchange = (e) => {
-                    handlePhotoSelected(e, preview, icon, delBtn, galleryInput);
-                };
-
-                // Tombol hapus
                 delBtn.onclick = (e) => {
                     e.stopImmediatePropagation();
                     preview.src = '';
@@ -396,18 +374,12 @@
 
         function selectCamera() {
             closePhotoSourceModal();
-            if (currentPhotoSlot) {
-                const cameraInput = currentPhotoSlot.querySelector('.cameraInput');
-                cameraInput.click();
-            }
+            if (currentPhotoSlot) currentPhotoSlot.querySelector('.cameraInput').click();
         }
 
         function selectGallery() {
             closePhotoSourceModal();
-            if (currentPhotoSlot) {
-                const galleryInput = currentPhotoSlot.querySelector('.galleryInput');
-                galleryInput.click();
-            }
+            if (currentPhotoSlot) currentPhotoSlot.querySelector('.galleryInput').click();
         }
 
         function closePhotoSourceModal() {
@@ -424,7 +396,6 @@
                 const delBtn = slot.querySelector('.delete-btn');
                 const cameraInput = slot.querySelector('.cameraInput');
                 const galleryInput = slot.querySelector('.galleryInput');
-                const errorText = slot.querySelector('.error-text');
 
                 preview.src = '';
                 preview.classList.add('hidden');
@@ -432,7 +403,6 @@
                 delBtn.classList.add('hidden');
                 if (cameraInput) cameraInput.value = '';
                 if (galleryInput) galleryInput.value = '';
-                if (errorText) errorText.style.display = 'none';
             }
 
             existingPhotoUrls.forEach((originalUrl, index) => {
@@ -441,7 +411,6 @@
                     const preview = slot.querySelector('.photoPreview');
                     const icon = slot.querySelector('i');
                     const delBtn = slot.querySelector('.delete-btn');
-
                     const proxiedUrl = getProxiedImageUrl(originalUrl);
                     preview.src = proxiedUrl;
                     preview.classList.remove('hidden');
@@ -456,8 +425,6 @@
                 }
             });
         }
-
-        // fungsi prefill
 
         async function prefillFromExisting(id) {
             document.getElementById('locationChoiceModal').classList.add('hidden');
@@ -486,7 +453,7 @@
             const id = document.getElementById('idDemplot').value;
             if (!id) return alert("ID belum ada!");
 
-            const inputs = document.querySelectorAll('.photoInput, .cameraInput, .galleryInput');
+            const inputs = document.querySelectorAll('.cameraInput, .galleryInput');
             let newUrls = [];
 
             for (let inp of inputs) {
@@ -498,10 +465,7 @@
                     });
                     const res = await fetch(GAS_URL, { 
                         method: 'POST', 
-                        body: JSON.stringify({ 
-                            filename: "IMG_" + id + "_" + Date.now() + ".jpg", 
-                            image: b64 
-                        }) 
+                        body: JSON.stringify({ filename: "IMG_" + id + "_" + Date.now() + ".jpg", image: b64 }) 
                     });
                     const j = await res.json();
                     if (j.status === "success") newUrls.push(j.url);
@@ -533,8 +497,8 @@
                 location.reload();
             }
         }
-	// Line deteksi GPS
 
+        // ==================== DETEKSI LOKASI (DIPERBAIKI) ====================
         function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
             const R = 6371e3;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -627,24 +591,30 @@
             }, { enableHighAccuracy: true });
         }
 
+        // ==================== autoFillWilayah (DIPERBAIKI) ====================
         async function autoFillWilayah(lat, lng) {
             try {
                 const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=id`;
                 const res = await fetch(url);
                 const data = await res.json();
+
                 if (!data || !data.address) {
-                    alert("Gagal membaca data lokasi.");
+                    alert("Gagal membaca data lokasi dari server.");
                     return;
                 }
+
                 const addr = data.address;
-                const provinceName = addr.state || addr.region || "";
+
+                // PROVINSI
+                const provinceName = addr.state || addr.region || addr.province || "";
                 const satProv = normalize(provinceName);
                 const provOpts = document.getElementById('selProvinsi').options;
+
                 let provinceMatched = false;
                 for (let i = 1; i < provOpts.length; i++) {
                     const pNameNorm = normalize(provOpts[i].text);
                     const isExact = satProv === pNameNorm;
-                    const isStrongMatch = (satProv.includes(pNameNorm) && pNameNorm.length >= 5) ||
+                    const isStrongMatch = (satProv.includes(pNameNorm) && pNameNorm.length >= 5) || 
                                           (pNameNorm.includes(satProv) && satProv.length >= 5);
                     if (isExact || isStrongMatch) {
                         document.getElementById('selProvinsi').value = provOpts[i].value;
@@ -653,12 +623,16 @@
                         break;
                     }
                 }
+
                 if (!provinceMatched) {
                     alert("Gagal mendeteksi Provinsi otomatis. Silakan pilih manual.");
                     return;
                 }
-                const satKota = normalize(addr.city || addr.county || addr.town || "");
+
+                // KOTA / KABUPATEN
+                const satKota = normalize(addr.city || addr.county || addr.municipality || addr.town || "");
                 const kotaOpts = document.getElementById('selKota').options;
+
                 for (let i = 1; i < kotaOpts.length; i++) {
                     const kNameNorm = normalize(kotaOpts[i].text);
                     if (satKota === kNameNorm || satKota.includes(kNameNorm) || kNameNorm.includes(satKota)) {
@@ -667,14 +641,30 @@
                         break;
                     }
                 }
-                const potentialKec = [addr.suburb, addr.district, addr.village, addr.municipality]
-                    .filter(Boolean).map(n => normalize(n)).filter(n => n.length > 2);
+
+                // KECAMATAN (DIPERBAIKI)
+                const possibleKecFields = [
+                    addr.suburb, addr.district, addr.village, addr.municipality,
+                    addr.city_district, addr.hamlet, addr.neighbourhood, addr.town, addr.city
+                ].filter(Boolean);
+
                 const kecOpts = document.getElementById('selKecamatan').options;
                 let foundKec = false;
-                for (let target of potentialKec) {
+
+                for (let fieldValue of possibleKecFields) {
+                    const target = normalize(fieldValue);
+                    if (target.length < 3) continue;
+
                     for (let i = 1; i < kecOpts.length; i++) {
                         const optNorm = normalize(kecOpts[i].text);
-                        if (optNorm === target || optNorm.includes(target) || target.includes(optNorm)) {
+                        const isExact = target === optNorm;
+                        const contains = target.includes(optNorm) || optNorm.includes(target);
+                        const targetWords = target.split(' ').filter(w => w.length > 3);
+                        const optWords = optNorm.split(' ').filter(w => w.length > 3);
+                        const wordMatch = targetWords.some(w => optNorm.includes(w)) && 
+                                         optWords.some(w => target.includes(w));
+
+                        if (isExact || contains || wordMatch) {
                             document.getElementById('selKecamatan').value = kecOpts[i].value;
                             foundKec = true;
                             break;
@@ -682,9 +672,15 @@
                     }
                     if (foundKec) break;
                 }
-                if (foundKec) await generateIDManual();
+
+                await generateIDManual();
+
+                if (!foundKec) {
+                    console.log("Kecamatan tidak terdeteksi otomatis. Silakan pilih manual.");
+                }
+
             } catch (e) {
-                console.error(e);
+                console.error("Error autoFillWilayah:", e);
                 alert("Terjadi kesalahan saat mendeteksi lokasi.");
             }
         }
@@ -694,19 +690,23 @@
             const kOpt = document.querySelector('#selKota option:checked');
             const dOpt = document.querySelector('#selKecamatan option:checked');
             if (!pOpt || !kOpt || !dOpt) return;
+
             const cleanP = getShortProv(pOpt.dataset.name);
             const cleanK = toPascalCaseID(kOpt.dataset.name);
             const cleanD = toPascalCaseID(dOpt.dataset.name);
             const prefix = cleanP + "_" + cleanK + "_" + cleanD;
+
             const { data } = await supabaseClient.from('demplot_monitoring').select('ID_Demplot').ilike('ID_Demplot', prefix + '%');
             const existing = new Set();
             if (data) data.forEach(row => {
                 const num = parseInt(row.ID_Demplot.split('_').pop());
                 if (!isNaN(num)) existing.add(num);
             });
+
             let next = 1;
             while (existing.has(next)) next++;
             if (next > 999) next = 999;
+
             document.getElementById('idDemplot').value = prefix + "_" + next.toString().padStart(3, '0');
         }
 
