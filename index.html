@@ -72,7 +72,14 @@
                     <p id="userNameDisplay" class="text-[10px] text-blue-600 font-bold">User: Petugas</p>
                 </div>
             </div>
-            <button onclick="handleLogout()"><i class="fas fa-sign-out-alt text-xl"></i></button>
+            <div class="flex items-center gap-2">
+                <!-- SYNC BUTTON -->
+                <button onclick="manualSync()" class="relative flex items-center justify-center w-10 h-10">
+                    <i class="fas fa-cloud-upload-alt text-2xl" id="syncIcon"></i>
+                    <span id="pendingBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full hidden">0</span>
+                </button>
+                <button onclick="handleLogout()"><i class="fas fa-sign-out-alt text-xl"></i></button>
+            </div>
         </header>
      
         <main class="max-w-md mx-auto p-4 space-y-5">
@@ -159,7 +166,7 @@
                 <textarea id="keterangan" rows="3" class="w-full border rounded-xl p-3 text-sm"></textarea>
             </div>
          
-            <button onclick="submitData()" class="w-full bg-blue-600 text-white font-bold py-5 rounded-3xl">SIMPAN DATA KE CLOUD</button>
+            <button onclick="submitData()" class="w-full bg-blue-600 text-white font-bold py-5 rounded-3xl">SIMPAN DATA</button>
         </main>
     </div>
 
@@ -171,7 +178,7 @@
     <!-- MODAL LOKASI -->
     <div id="locationChoiceModal" class="fixed inset-0 bg-black/70 hidden z-[200] flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl max-w-sm w-full p-6">
-            <h3 class="font-bold text-xl mb-4">Lokasi Sudah Ada</h3>
+            <h3 class="font-bold text-xl mb-4">Pilih Lahan</h3>
             <div id="nearbyList" class="space-y-2 mb-4 max-h-64 overflow-auto"></div>
             <button onclick="chooseCreateNew()" class="w-full bg-gray-200 py-3 rounded-2xl font-bold">Buat Lokasi Baru</button>
         </div>
@@ -226,76 +233,125 @@
         let currentLat = null;
         let currentLng = null;
         let currentPhotoSlot = null;
+        let pendingData = [];
 
-        window.onload = async () => {
-            initPhotoGrid();
-            checkSession();
-            await loadProvinces();
-            
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('service-worker.js')
-                    .then(() => console.log("Service Worker registered"))
-                    .catch(err => console.log("SW failed"));
-            }
-        };
-
-        function showLoginForm() {
-            document.getElementById('loginForm').classList.remove('hidden');
-            document.getElementById('registerForm').classList.add('hidden');
+        // ==================== OFFLINE SUPPORT ====================
+        function loadPendingData() {
+            const saved = localStorage.getItem('pendingDemplot');
+            if (saved) pendingData = JSON.parse(saved);
+            updatePendingBadge();
         }
 
-        function showRegisterForm() {
-            document.getElementById('loginForm').classList.add('hidden');
-            document.getElementById('registerForm').classList.remove('hidden');
+        function savePendingData() {
+            localStorage.setItem('pendingDemplot', JSON.stringify(pendingData));
+            updatePendingBadge();
         }
 
-        async function checkSession() {
-            const { data: { user } } = await supabaseClient.auth.getUser();
-            if (user) {
-                activeUser = user;
-                const { data: member } = await supabaseClient.from('members').select('full_name').eq('id', user.id).single();
-                const displayName = member?.full_name || user.email;
-                document.getElementById('userNameDisplay').innerText = "User: " + displayName;
-                document.getElementById('appView').classList.remove('hidden-view');
-                document.getElementById('authView').classList.add('hidden-view');
+        function updatePendingBadge() {
+            const badge = document.getElementById('pendingBadge');
+            const icon = document.getElementById('syncIcon');
+            if (pendingData.length > 0) {
+                badge.textContent = pendingData.length;
+                badge.classList.remove('hidden');
+                icon.classList.add('text-red-500');
+                icon.classList.remove('text-green-500');
             } else {
-                document.getElementById('authView').classList.remove('hidden-view');
+                badge.classList.add('hidden');
+                icon.classList.add('text-green-500');
+                icon.classList.remove('text-red-500');
             }
         }
 
-        async function handleLogin() {
-            const email = document.getElementById('authEmail').value.trim();
-            const pass = document.getElementById('authPass').value.trim();
-            if (!email || !pass) return alert("Email dan Password harus diisi!");
-            const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
-            if (error) alert("Login gagal: " + error.message);
-            else checkSession();
+        async function manualSync() {
+            if (pendingData.length === 0) {
+                alert("Tidak ada data pending.");
+                return;
+            }
+            const result = await processPendingQueue();
+            alert(result);
         }
 
-        async function handleRegister() {
-            const name = document.getElementById('regName').value.trim();
-            const email = document.getElementById('regEmail').value.trim();
-            const pass = document.getElementById('regPass').value.trim();
-            if (!name || !email || !pass) return alert("Nama, Email, dan Password harus diisi!");
-         
-            const { data, error } = await supabaseClient.auth.signUp({ email, password: pass });
-            if (error) return alert("Registrasi gagal: " + error.message);
-            const { error: memberError } = await supabaseClient.from('members').insert({
-                id: data.user.id,
-                full_name: name,
-                email: email,
-                role: 'petugas'
+        async function processPendingQueue() {
+            let success = 0;
+            let fail = 0;
+
+            for (let i = pendingData.length - 1; i >= 0; i--) {
+                const item = pendingData[i];
+                try {
+                    // Upload foto dulu
+                    const finalPhotos = await uploadPhotosFromPending(item.photos || []);
+                    
+                    const payload = {
+                        "ID_Demplot": item.id_demplot,
+                        "Nama Pemilik Demplot": item.nama_pemilik,
+                        "Telepon": item.telepon || "-",
+                        "Luasan Demplot": item.luasan,
+                        "Lokasi Demplot": item.lokasi,
+                        "Foto": finalPhotos,
+                        "Tanggal Tanam": item.tgl_tanam || null,
+                        "Tanggal Perlakuan 1": item.p1 || null,
+                        "Tanggal Perlakuan 2": item.p2 || null,
+                        "Tanggal Perlakuan 3": item.p3 || null,
+                        "Tanggal Perlakuan 4": item.p4 || null,
+                        "Keterangan": item.keterangan,
+                        "last_edited": item.last_updated_by,
+                        "created_by": item.created_by
+                    };
+
+                    await supabaseClient.from('demplot_monitoring').upsert(payload);
+                    pendingData.splice(i, 1);
+                    success++;
+                } catch (e) {
+                    console.error(e);
+                    fail++;
+                }
+            }
+            savePendingData();
+            return `Sukses: ${success}, Gagal: ${fail}`;
+        }
+
+        async function uploadPhotosFromPending(photoDataUrls) {
+            const urls = [];
+            for (let dataUrl of photoDataUrls) {
+                if (dataUrl.startsWith('http')) {
+                    urls.push(dataUrl);
+                    continue;
+                }
+                // Compress
+                const compressed = await compressImage(dataUrl);
+                const base64 = compressed.split(',')[1];
+                const fileName = "IMG_" + Date.now() + ".jpg";
+                
+                const res = await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ filename: fileName, image: base64 })
+                });
+                const j = await res.json();
+                if (j.status === "success") urls.push(j.url);
+            }
+            return urls.join(',');
+        }
+
+        function compressImage(dataUrl) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > 1024) {
+                        const ratio = 1024 / width;
+                        width = 1024;
+                        height = Math.round(height * ratio);
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7));
+                };
+                img.src = dataUrl;
             });
-            if (memberError) alert("Gagal menyimpan nama: " + memberError.message);
-            else {
-                alert("Akun berhasil dibuat! Silakan login.");
-                showLoginForm();
-            }
-        }
-
-        async function handleLogout() {
-            await supabaseClient.auth.signOut();
-            location.reload();
         }
 
         // ==================== FOTO (KAMERA + GALERI) ====================
@@ -425,154 +481,79 @@
             });
         }
 
-        async function prefillFromExisting(id) {
-            document.getElementById('locationChoiceModal').classList.add('hidden');
-            const { data, error } = await supabaseClient.from('demplot_monitoring').select('*').eq('ID_Demplot', id).single();
-            if (error || !data) return alert("Gagal memuat data lama");
-
-            document.getElementById('idDemplot').value = data["ID_Demplot"] || '';
-            document.getElementById('namaPemilik').value = data["Nama Pemilik Demplot"] || '';
-            document.getElementById('telepon').value = data["Telepon"] || '';
-            document.getElementById('luasan').value = data["Luasan Demplot"] || '';
-            document.getElementById('lokasiGPS').value = data["Lokasi Demplot"] || '';
-            document.getElementById('tglTanam').value = data["Tanggal Tanam"] || '';
-            document.getElementById('p1').value = data["Tanggal Perlakuan 1"] || '';
-            document.getElementById('p2').value = data["Tanggal Perlakuan 2"] || '';
-            document.getElementById('p3').value = data["Tanggal Perlakuan 3"] || '';
-            document.getElementById('p4').value = data["Tanggal Perlakuan 4"] || '';
-            document.getElementById('keterangan').value = data["Keterangan"] || '';
-
-            existingPhotoUrls = data["Foto"] ? data["Foto"].split(',') : [];
-            isUpdateMode = true;
-            displayExistingPhotos();
-            alert("✅ Data lama dimuat.");
-        }
-
+        // ==================== SUBMIT DATA (OFFLINE FIRST) ====================
         async function submitData() {
             const id = document.getElementById('idDemplot').value;
             if (!id) return alert("ID belum ada!");
 
             const inputs = document.querySelectorAll('.cameraInput, .galleryInput');
-            let newUrls = [];
+            let newPhotoDataUrls = [];
 
             for (let inp of inputs) {
                 if (inp.files && inp.files[0]) {
-                    const b64 = await new Promise(r => {
-                        const fr = new FileReader();
-                        fr.onload = e => r(e.target.result.split(',')[1]);
-                        fr.readAsDataURL(inp.files[0]);
+                    const reader = new FileReader();
+                    const dataUrl = await new Promise(resolve => {
+                        reader.onload = e => resolve(e.target.result);
+                        reader.readAsDataURL(inp.files[0]);
                     });
-                    const res = await fetch(GAS_URL, { 
-                        method: 'POST', 
-                        body: JSON.stringify({ filename: "IMG_" + id + "_" + Date.now() + ".jpg", image: b64 }) 
-                    });
-                    const j = await res.json();
-                    if (j.status === "success") newUrls.push(j.url);
+                    newPhotoDataUrls.push(dataUrl);
                 }
             }
 
-            const finalPhotos = [...existingPhotoUrls, ...newUrls].join(',');
-
             const payload = {
-                "ID_Demplot": id,
-                "Nama Pemilik Demplot": document.getElementById('namaPemilik').value,
-                "Telepon": document.getElementById('telepon').value,
-                "Luasan Demplot": document.getElementById('luasan').value,
-                "Lokasi Demplot": document.getElementById('lokasiGPS').value,
-                "Foto": finalPhotos,
-                "Tanggal Tanam": document.getElementById('tglTanam').value || null,
-                "Tanggal Perlakuan 1": document.getElementById('p1').value || null,
-                "Tanggal Perlakuan 2": document.getElementById('p2').value || null,
-                "Tanggal Perlakuan 3": document.getElementById('p3').value || null,
-                "Tanggal Perlakuan 4": document.getElementById('p4').value || null,
-                "Keterangan": document.getElementById('keterangan').value,
-                "last_edited": activeUser.email
+                id_demplot: id,
+                nama_pemilik: document.getElementById('namaPemilik').value,
+                telepon: document.getElementById('telepon').value,
+                luasan: document.getElementById('luasan').value,
+                lokasi: document.getElementById('lokasiGPS').value,
+                tgl_tanam: document.getElementById('tglTanam').value || null,
+                p1: document.getElementById('p1').value || null,
+                p2: document.getElementById('p2').value || null,
+                p3: document.getElementById('p3').value || null,
+                p4: document.getElementById('p4').value || null,
+                keterangan: document.getElementById('keterangan').value,
+                last_updated_by: activeUser?.email || "Unknown",
+                created_by: activeUser?.email || "Unknown",
+                photos: newPhotoDataUrls
             };
 
-            const { error } = await supabaseClient.from('demplot_monitoring').upsert(payload);
-            if (error) alert("Gagal menyimpan: " + error.message);
-            else {
-                alert("✅ Data berhasil disimpan!");
-                location.reload();
+            // Simpan ke pending queue
+            pendingData.unshift(payload);
+            savePendingData();
+
+            // Reset form
+            document.getElementById('idDemplot').value = '';
+            document.getElementById('namaPemilik').value = '';
+            document.getElementById('telepon').value = '';
+            document.getElementById('luasan').value = '';
+            document.getElementById('lokasiGPS').value = '';
+            document.getElementById('tglTanam').value = '';
+            document.getElementById('p1').value = '';
+            document.getElementById('p2').value = '';
+            document.getElementById('p3').value = '';
+            document.getElementById('p4').value = '';
+            document.getElementById('keterangan').value = '';
+
+            const slots = document.getElementById('photoGrid').children;
+            for (let slot of slots) {
+                const preview = slot.querySelector('.photoPreview');
+                const icon = slot.querySelector('i');
+                const delBtn = slot.querySelector('.delete-btn');
+                preview.src = '';
+                preview.classList.add('hidden');
+                icon.classList.remove('hidden');
+                delBtn.classList.add('hidden');
+            }
+
+            alert("Data disimpan offline. Tekan tombol Sync untuk upload.");
+
+            // Auto sync jika online
+            if (navigator.onLine) {
+                setTimeout(() => processPendingQueue(), 1000);
             }
         }
 
         // ==================== DETEKSI LOKASI ====================
-        function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
-            const R = 6371e3;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-        }
-
-        function parseCoordinatesFromUrl(url) {
-            if (!url) return null;
-            const match = url.match(/q=([-\d.]+),([-\d.]+)/);
-            return match ? { lat: parseFloat(match[1]), lng: parseFloat(match[2]) } : null;
-        }
-
-        async function checkExistingNearby(currentLat, currentLng) {
-            const { data, error } = await supabaseClient.from('demplot_monitoring').select('ID_Demplot, "Nama Pemilik Demplot", "Lokasi Demplot"');
-            if (error || !data) return false;
-
-            const nearby = [];
-            data.forEach(record => {
-                const coords = parseCoordinatesFromUrl(record["Lokasi Demplot"]);
-                if (coords) {
-                    const dist = getDistanceFromLatLonInMeters(currentLat, currentLng, coords.lat, coords.lng);
-                    if (dist <= 50) {
-                        nearby.push({ id: record.ID_Demplot, nama: record["Nama Pemilik Demplot"] || "Tanpa Nama", distance: Math.round(dist) });
-                    }
-                }
-            });
-
-            if (nearby.length > 0) {
-                currentNearbyRecords = nearby;
-                showNearbyModal();
-                return true;
-            }
-            return false;
-        }
-
-        function showNearbyModal() {
-            const modal = document.getElementById('locationChoiceModal');
-            const list = document.getElementById('nearbyList');
-            list.innerHTML = '';
-            currentNearbyRecords.forEach(r => {
-                const div = document.createElement('div');
-                div.className = 'bg-gray-50 border rounded-2xl p-4 flex justify-between items-center';
-                div.innerHTML = `
-                    <div>
-                        <div class="font-mono text-sm font-bold">${r.id}</div>
-                        <div class="text-sm">${r.nama}</div>
-                        <div class="text-xs text-emerald-600">≈ ${r.distance} meter</div>
-                    </div>
-                    <button onclick="prefillFromExisting('${r.id}')" class="bg-emerald-600 text-white text-xs px-4 py-2 rounded-xl font-bold">Update</button>
-                `;
-                list.appendChild(div);
-            });
-            modal.classList.remove('hidden');
-        }
-
-        function chooseCreateNew() {
-            document.getElementById('locationChoiceModal').classList.add('hidden');
-            if (currentLat && currentLng) {
-                autoFillWilayah(currentLat, currentLng);
-            } else {
-                const gps = document.getElementById('lokasiGPS').value;
-                const match = gps.match(/q=([-\d.]+),([-\d.]+)/);
-                if (match) {
-                    const lat = parseFloat(match[1]);
-                    const lng = parseFloat(match[2]);
-                    autoFillWilayah(lat, lng);
-                } else {
-                    alert("Gagal membaca koordinat. Silakan deteksi GPS ulang.");
-                }
-            }
-        }
-
         function detectGPS() {
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
@@ -590,41 +571,95 @@
             }, { enableHighAccuracy: true });
         }
 
-        // ==================== autoFillWilayah (FINAL) ====================
+        async function checkExistingNearby(currentLat, currentLng) {
+            const { data, error } = await supabaseClient.from('demplot_monitoring').select('*');
+            if (error || !data) return false;
+
+            const nearby = [];
+            data.forEach(record => {
+                const coords = parseCoordinatesFromUrl(record["Lokasi Demplot"]);
+                if (coords) {
+                    const dist = getDistanceFromLatLonInMeters(currentLat, currentLng, coords.lat, coords.lng);
+                    if (dist <= 50) {
+                        nearby.push(record);
+                    }
+                }
+            });
+
+            if (nearby.length > 0) {
+                currentNearbyRecords = nearby;
+                showNearbyModal();
+                return true;
+            }
+            return false;
+        }
+
+        function showNearbyModal() {
+            const modal = document.getElementById('locationChoiceModal');
+            const list = document.getElementById('nearbyList');
+            list.innerHTML = '';
+            
+            currentNearbyRecords.forEach(r => {
+                const div = document.createElement('div');
+                div.className = 'bg-gray-50 border rounded-2xl p-4 flex justify-between items-center mb-2';
+                div.innerHTML = `
+                    <div>
+                        <div class="font-mono text-sm font-bold">${r["ID_Demplot"]}</div>
+                        <div class="text-sm">${r["Nama Pemilik Demplot"] || "Tanpa Nama"}</div>
+                    </div>
+                    <button onclick="prefillFromExisting('${r["ID_Demplot"]}')" class="bg-emerald-600 text-white text-xs px-4 py-2 rounded-xl font-bold">Update</button>
+                `;
+                list.appendChild(div);
+            });
+            modal.classList.remove('hidden');
+        }
+
+        function chooseCreateNew() {
+            document.getElementById('locationChoiceModal').classList.add('hidden');
+            if (currentLat && currentLng) {
+                autoFillWilayah(currentLat, currentLng);
+            }
+        }
+
+        function parseCoordinatesFromUrl(url) {
+            if (!url) return null;
+            const match = url.match(/q=([-\d.]+),([-\d.]+)/);
+            return match ? { lat: parseFloat(match[1]), lng: parseFloat(match[2]) } : null;
+        }
+
+        function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // ==================== autoFillWilayah ====================
         async function autoFillWilayah(lat, lng) {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 8000);
 
                 const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=id`;
-                
-                const res = await fetch(url, {
-                    signal: controller.signal,
-                    headers: { 'User-Agent': 'CalsindoMonitoringApp/1.0' }
-                });
-
+                const res = await fetch(url, { signal: controller.signal });
                 clearTimeout(timeoutId);
 
-                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-
                 const data = await res.json();
-                if (!data || !data.address) throw new Error("Data alamat kosong");
+                if (!data || !data.address) throw new Error("Data kosong");
 
                 const addr = data.address;
-                console.log("Nominatim Address:", addr);
+                console.log("Nominatim:", addr);
 
-                // PROVINSI
-                const provinceName = addr.state || addr.region || addr.province || "";
+                const provinceName = addr.state || addr.region || "";
                 const satProv = normalize(provinceName);
                 const provOpts = document.getElementById('selProvinsi').options;
 
                 let provinceMatched = false;
                 for (let i = 1; i < provOpts.length; i++) {
                     const pNameNorm = normalize(provOpts[i].text);
-                    const isExact = satProv === pNameNorm;
-                    const isStrongMatch = (satProv.includes(pNameNorm) && pNameNorm.length >= 5) || 
-                                          (pNameNorm.includes(satProv) && satProv.length >= 5);
-                    if (isExact || isStrongMatch) {
+                    if (satProv === pNameNorm || (satProv.includes(pNameNorm) && pNameNorm.length >= 5)) {
                         document.getElementById('selProvinsi').value = provOpts[i].value;
                         await loadCities(provOpts[i].value);
                         provinceMatched = true;
@@ -633,14 +668,12 @@
                 }
 
                 if (!provinceMatched) {
-                    alert("Gagal mendeteksi Provinsi otomatis. Silakan pilih manual.");
+                    alert("Gagal mendeteksi Provinsi. Silakan pilih manual.");
                     return;
                 }
 
-                // KOTA
-                const satKota = normalize(addr.city || addr.county || addr.municipality || addr.town || "");
+                const satKota = normalize(addr.city || addr.county || "");
                 const kotaOpts = document.getElementById('selKota').options;
-
                 for (let i = 1; i < kotaOpts.length; i++) {
                     const kNameNorm = normalize(kotaOpts[i].text);
                     if (satKota === kNameNorm || satKota.includes(kNameNorm) || kNameNorm.includes(satKota)) {
@@ -650,29 +683,14 @@
                     }
                 }
 
-                // KECAMATAN
-                const possibleKecFields = [
-                    addr.suburb, addr.district, addr.village, addr.municipality,
-                    addr.city_district, addr.hamlet, addr.neighbourhood, addr.town, addr.city
-                ].filter(Boolean);
-
+                const possibleKec = [addr.suburb, addr.district, addr.village, addr.municipality].filter(Boolean);
                 const kecOpts = document.getElementById('selKecamatan').options;
                 let foundKec = false;
 
-                for (let fieldValue of possibleKecFields) {
-                    let target = normalize(fieldValue);
-                    if (target.length < 3) continue;
-                    target = target.replace(/kecamatan/g, '').trim();
-
+                for (let target of possibleKec.map(n => normalize(n))) {
                     for (let i = 1; i < kecOpts.length; i++) {
-                        let optNorm = normalize(kecOpts[i].text);
-                        optNorm = optNorm.replace(/kecamatan/g, '').trim();
-
-                        const isExact = target === optNorm;
-                        const contains = target.includes(optNorm) || optNorm.includes(target);
-                        const partial = target.substring(0, 4) === optNorm.substring(0, 4);
-
-                        if (isExact || contains || partial) {
+                        const optNorm = normalize(kecOpts[i].text);
+                        if (target === optNorm || target.includes(optNorm) || optNorm.includes(target)) {
                             document.getElementById('selKecamatan').value = kecOpts[i].value;
                             foundKec = true;
                             break;
@@ -683,18 +701,9 @@
 
                 await generateIDManual();
 
-                if (!foundKec) {
-                    console.log("Kecamatan tidak terdeteksi otomatis.");
-                }
-
             } catch (e) {
-                console.error("Error autoFillWilayah:", e);
-                
-                if (e.name === 'AbortError') {
-                    alert("Deteksi lokasi timeout. Periksa koneksi internet lalu coba lagi.");
-                } else {
-                    alert("Gagal mendeteksi lokasi otomatis.\nSilakan pilih Provinsi, Kota, dan Kecamatan secara manual.");
-                }
+                console.error(e);
+                alert("Gagal mendeteksi lokasi otomatis. Silakan isi manual.");
             }
         }
 
@@ -785,16 +794,82 @@
             document.getElementById('selKecamatan').innerHTML = html;
         }
 
-        function showLoading(show) {
-            document.getElementById('loadingOverlay').classList.toggle('hidden', !show);
-        }
-
         function unlockLocation() {
             document.getElementById('selProvinsi').disabled = false;
             document.getElementById('selKota').disabled = false;
             document.getElementById('selKecamatan').disabled = false;
             document.getElementById('locationStatus').classList.add('hidden');
         }
+
+        // ==================== AUTH ====================
+        async function checkSession() {
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (user) {
+                activeUser = user;
+                const { data: member } = await supabaseClient.from('members').select('full_name').eq('id', user.id).single();
+                const displayName = member?.full_name || user.email;
+                document.getElementById('userNameDisplay').innerText = "User: " + displayName;
+                document.getElementById('appView').classList.remove('hidden-view');
+                document.getElementById('authView').classList.add('hidden-view');
+                loadPendingData();
+            } else {
+                document.getElementById('authView').classList.remove('hidden-view');
+            }
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('authEmail').value.trim();
+            const pass = document.getElementById('authPass').value.trim();
+            if (!email || !pass) return alert("Email dan Password harus diisi!");
+            const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
+            if (error) alert("Login gagal: " + error.message);
+            else checkSession();
+        }
+
+        async function handleRegister() {
+            const name = document.getElementById('regName').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const pass = document.getElementById('regPass').value.trim();
+            if (!name || !email || !pass) return alert("Nama, Email, dan Password harus diisi!");
+           
+            const { data, error } = await supabaseClient.auth.signUp({ email, password: pass });
+            if (error) return alert("Registrasi gagal: " + error.message);
+
+            const { error: memberError } = await supabaseClient.from('members').insert({
+                id: data.user.id,
+                full_name: name,
+                email: email,
+                role: 'petugas'
+            });
+
+            if (memberError) alert("Gagal menyimpan nama: " + memberError.message);
+            else {
+                alert("Akun berhasil dibuat! Silakan login.");
+                showLoginForm();
+            }
+        }
+
+        async function handleLogout() {
+            await supabaseClient.auth.signOut();
+            localStorage.removeItem('pendingDemplot');
+            location.reload();
+        }
+
+        // ==================== INIT ====================
+        window.onload = async () => {
+            initPhotoGrid();
+            checkSession();
+            await loadProvinces();
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('service-worker.js');
+            }
+            
+            // Auto sync saat online
+            window.addEventListener('online', () => {
+                if (pendingData.length > 0) processPendingQueue();
+            });
+        };
     </script>
 </body>
 </html>
