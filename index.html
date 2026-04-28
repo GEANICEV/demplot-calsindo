@@ -52,7 +52,13 @@
                     <input type="text" id="regName" placeholder="Nama Lengkap" class="w-full border rounded-xl p-4 text-sm">
                     <input type="email" id="regEmail" placeholder="Email" class="w-full border rounded-xl p-4 text-sm">
                     <input type="password" id="regPass" placeholder="Password" class="w-full border rounded-xl p-4 text-sm">
-                    <button onclick="handleRegister()" class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl">DAFTAR</button>
+                    
+                    <!-- TOMBOL DAFTAR YANG DIPERBAIKI -->
+                    <button id="btnRegister" type="button" 
+                            class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl active:bg-emerald-700 transition-all">
+                        DAFTAR
+                    </button>
+                    
                     <p class="text-center text-sm text-gray-600">
                         Sudah punya akun?
                         <span onclick="showLoginForm()" class="text-blue-600 font-semibold cursor-pointer">Login di sini</span>
@@ -436,9 +442,7 @@
                     email: email,
                     password: pass,
                     options: {
-                        data: {
-                            full_name: name
-                        }
+                        data: { full_name: name }
                     }
                 });
 
@@ -447,14 +451,12 @@
                     return alert("Registrasi gagal: " + error.message);
                 }
 
-                // Jika email confirmation aktif, data.user bisa null
                 if (!data.user) {
                     alert("Akun berhasil dibuat!\nSilakan cek email Anda untuk konfirmasi, lalu login.");
                     showLoginForm();
                     return;
                 }
 
-                // Jika tidak perlu konfirmasi email, simpan ke tabel members
                 const { error: memberError } = await supabaseClient.from('members').insert({
                     id: data.user.id,
                     full_name: name,
@@ -473,7 +475,7 @@
 
             } catch (e) {
                 console.error("Register Error:", e);
-                alert("Terjadi kesalahan saat registrasi. Coba lagi.");
+                alert("Terjadi kesalahan saat registrasi.");
             }
         }
 
@@ -974,6 +976,12 @@
             initPhotoGrid();
             checkSession();
             await loadProvinces();
+            
+            // === EVENT LISTENER UNTUK TOMBOL DAFTAR ===
+            const btnRegister = document.getElementById('btnRegister');
+            if (btnRegister) {
+                btnRegister.addEventListener('click', handleRegister);
+            }
             
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('service-worker.js');
