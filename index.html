@@ -62,6 +62,84 @@
         </div>
     </div>
 
+    <!-- APP VIEW (sama seperti versi stabil) -->
+    <!-- ... (sisanya Anda bisa copy dari script stabil sebelumnya) ... -->
+
+    <script>
+        const SB_URL = "https://adlsyyualatelwwkftyf.supabase.co";
+        const SB_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkbHN5eXVhbGF0ZWx3d2tmdHlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwMDY3MzcsImV4cCI6MjA4NjU4MjczN30.QG7BL1d5OORWX6U6TGvz5-1IgjjsT8xexGUwwKM8AH4";
+
+        const supabaseClient = supabase.createClient(SB_URL, SB_ANON_KEY);
+        let activeUser = null;
+
+        async function handleLogin() {
+            const email = document.getElementById('authEmail').value.trim();
+            const pass = document.getElementById('authPass').value.trim();
+
+            if (!email || !pass) {
+                alert("Email dan Password harus diisi!");
+                return;
+            }
+
+            try {
+                console.log("Mencoba login dengan:", email);
+                const { data, error } = await supabaseClient.auth.signInWithPassword({ 
+                    email, 
+                    password: pass 
+                });
+
+                if (error) {
+                    console.error("Login Error:", error);
+                    alert("Login gagal: " + error.message);
+                    return;
+                }
+
+                console.log("Login berhasil:", data.user);
+                activeUser = data.user;
+                await checkSession();
+
+            } catch (err) {
+                console.error("Exception saat login:", err);
+                alert("Terjadi kesalahan saat login. Coba lagi.");
+            }
+        }
+
+        async function checkSession() {
+            try {
+                const { data: { user } } = await supabaseClient.auth.getUser();
+                if (user) {
+                    activeUser = user;
+                    const { data: member } = await supabaseClient.from('members').select('full_name').eq('id', user.id).single();
+                    const displayName = member?.full_name || user.email || "Petugas";
+                    document.getElementById('userNameDisplay').innerText = "User: " + displayName;
+                    
+                    document.getElementById('appView').classList.remove('hidden-view');
+                    document.getElementById('authView').classList.add('hidden-view');
+                }
+            } catch (e) {
+                console.error("Check Session Error:", e);
+            }
+        }
+
+        // Fungsi lain (showLoginForm, showRegisterForm, handleRegister, dll) tetap sama seperti sebelumnya
+        function showLoginForm() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('registerForm').classList.add('hidden');
+        }
+
+        function showRegisterForm() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+        }
+
+        // ... (sisanya script GPS, foto, submit, dll dari versi stabil)
+
+        window.onload = () => {
+            checkSession();
+        };
+    </script>
+</body>
+</html>
     <!-- APP VIEW -->
     <div id="appView" class="hidden-view">
         <header class="bg-white border-b sticky top-0 z-50 px-4 py-3 flex justify-between items-center shadow-sm">
