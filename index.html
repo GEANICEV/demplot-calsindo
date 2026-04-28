@@ -36,10 +36,11 @@
                 <div class="space-y-4">
                     <input type="email" id="authEmail" placeholder="Email" class="w-full border rounded-xl p-4 text-sm">
                     <input type="password" id="authPass" placeholder="Password" class="w-full border rounded-xl p-4 text-sm">
-                    <button onclick="handleLogin()" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl">LOGIN</button>
+                    <button id="btnLogin" type="button" 
+                            class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl">LOGIN</button>
                     <p class="text-center text-sm text-gray-600">
                         Belum punya akun?
-                        <span id="linkRegister" class="text-blue-600 font-semibold cursor-pointer">Daftar di sini</span>
+                        <span id="linkToRegister" class="text-blue-600 font-semibold cursor-pointer">Daftar di sini</span>
                     </p>
                 </div>
             </div>
@@ -52,16 +53,96 @@
                     <input type="text" id="regName" placeholder="Nama Lengkap" class="w-full border rounded-xl p-4 text-sm">
                     <input type="email" id="regEmail" placeholder="Email" class="w-full border rounded-xl p-4 text-sm">
                     <input type="password" id="regPass" placeholder="Password" class="w-full border rounded-xl p-4 text-sm">
-                    <button id="btnRegister" type="button" class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl">DAFTAR</button>
+                    <button id="btnRegister" type="button" 
+                            class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl">DAFTAR</button>
                     <p class="text-center text-sm text-gray-600">
                         Sudah punya akun?
-                        <span id="linkLogin" class="text-blue-600 font-semibold cursor-pointer">Login di sini</span>
+                        <span id="linkToLogin" class="text-blue-600 font-semibold cursor-pointer">Login di sini</span>
                     </p>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- APP VIEW (sama seperti sebelumnya) -->
+    <!-- ... (sisanya tetap sama, saya ringkas) ... -->
+
+    <script>
+        // ... (semua fungsi IndexedDB, Foto, Sync, GPS, dll tetap sama seperti script terakhir)
+
+        // ==================== AUTH FUNCTIONS ====================
+        async function handleLogin() {
+            const email = document.getElementById('authEmail').value.trim();
+            const pass = document.getElementById('authPass').value.trim();
+            if (!email || !pass) return alert("Email dan Password harus diisi!");
+
+            try {
+                const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
+                if (error) {
+                    alert("Login gagal: " + error.message);
+                } else {
+                    await checkSession();
+                }
+            } catch (e) {
+                alert("Terjadi kesalahan saat login");
+                console.error(e);
+            }
+        }
+
+        async function handleRegister() {
+            const name = document.getElementById('regName').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const pass = document.getElementById('regPass').value.trim();
+            
+            if (!name || !email || !pass) return alert("Nama, Email, dan Password harus diisi!");
+
+            try {
+                const { data, error } = await supabaseClient.auth.signUp({
+                    email,
+                    password: pass,
+                    options: { data: { full_name: name } }
+                });
+
+                if (error) return alert("Registrasi gagal: " + error.message);
+
+                alert("Akun berhasil dibuat! Silakan login.");
+                showLoginForm();
+            } catch (e) {
+                alert("Terjadi kesalahan saat registrasi.");
+                console.error(e);
+            }
+        }
+
+        function showLoginForm() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('registerForm').classList.add('hidden');
+        }
+
+        function showRegisterForm() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+        }
+
+        // ==================== INIT (Event Listeners) ====================
+        window.onload = async () => {
+            await initDB();
+            initPhotoGrid();
+            checkSession();
+            await loadProvinces();
+
+            // Event Listeners untuk tombol & link
+            document.getElementById('btnLogin').addEventListener('click', handleLogin);
+            document.getElementById('btnRegister').addEventListener('click', handleRegister);
+            document.getElementById('linkToRegister').addEventListener('click', showRegisterForm);
+            document.getElementById('linkToLogin').addEventListener('click', showLoginForm);
+
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('service-worker.js');
+            }
+        };
+    </script>
+</body>
+</html>
     <!-- APP VIEW -->
     <div id="appView" class="hidden-view">
         <header class="bg-white border-b sticky top-0 z-50 px-4 py-3 flex justify-between items-center shadow-sm">
