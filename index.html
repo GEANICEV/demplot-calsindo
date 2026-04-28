@@ -39,7 +39,7 @@
                     <button onclick="handleLogin()" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl">LOGIN</button>
                     <p class="text-center text-sm text-gray-600">
                         Belum punya akun?
-                        <span onclick="showRegisterForm()" class="text-blue-600 font-semibold cursor-pointer">Daftar di sini</span>
+                        <span id="linkRegister" class="text-blue-600 font-semibold cursor-pointer">Daftar di sini</span>
                     </p>
                 </div>
             </div>
@@ -52,10 +52,15 @@
                     <input type="text" id="regName" placeholder="Nama Lengkap" class="w-full border rounded-xl p-4 text-sm">
                     <input type="email" id="regEmail" placeholder="Email" class="w-full border rounded-xl p-4 text-sm">
                     <input type="password" id="regPass" placeholder="Password" class="w-full border rounded-xl p-4 text-sm">
-                    <button onclick="handleRegister()" class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl">DAFTAR</button>
+                    
+                    <button id="btnRegister" type="button" 
+                            class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl active:bg-emerald-700 transition-all">
+                        DAFTAR
+                    </button>
+                    
                     <p class="text-center text-sm text-gray-600">
                         Sudah punya akun?
-                        <span onclick="showLoginForm()" class="text-blue-600 font-semibold cursor-pointer">Login di sini</span>
+                        <span id="linkLogin" class="text-blue-600 font-semibold cursor-pointer">Login di sini</span>
                     </p>
                 </div>
             </div>
@@ -72,7 +77,13 @@
                     <p id="userNameDisplay" class="text-[10px] text-blue-600 font-bold">User: Petugas</p>
                 </div>
             </div>
-            <button onclick="handleLogout()"><i class="fas fa-sign-out-alt text-xl"></i></button>
+            <div class="flex items-center gap-2">
+                <button onclick="manualSync()" class="relative flex items-center justify-center w-10 h-10">
+                    <i class="fas fa-cloud-upload-alt text-2xl" id="syncIcon"></i>
+                    <span id="pendingBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full hidden">0</span>
+                </button>
+                <button onclick="handleLogout()"><i class="fas fa-sign-out-alt text-xl"></i></button>
+            </div>
         </header>
      
         <main class="max-w-md mx-auto p-4 space-y-5">
@@ -165,7 +176,7 @@
     <!-- MODAL LOKASI -->
     <div id="locationChoiceModal" class="fixed inset-0 bg-black/70 hidden z-[200] flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl max-w-sm w-full p-6">
-            <h3 class="font-bold text-xl mb-4">Lokasi Sudah Ada</h3>
+            <h3 class="font-bold text-xl mb-4">Pilih Lahan</h3>
             <div id="nearbyList" class="space-y-2 mb-4 max-h-64 overflow-auto"></div>
             <button onclick="chooseCreateNew()" class="w-full bg-gray-200 py-3 rounded-2xl font-bold">Buat Lokasi Baru</button>
         </div>
@@ -220,76 +231,72 @@
         let currentLat = null;
         let currentLng = null;
         let currentPhotoSlot = null;
+        let selectedNearbyRecord = null;
 
-        window.onload = async () => {
-            initPhotoGrid();
-            checkSession();
-            await loadProvinces();
-            
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('service-worker.js');
-            }
-        };
-
-        function showLoginForm() {
-            document.getElementById('loginForm').classList.remove('hidden');
-            document.getElementById('registerForm').classList.add('hidden');
-        }
-
-        function showRegisterForm() {
-            document.getElementById('loginForm').classList.add('hidden');
-            document.getElementById('registerForm').classList.remove('hidden');
-        }
-
-        async function checkSession() {
-            const { data: { user } } = await supabaseClient.auth.getUser();
-            if (user) {
-                activeUser = user;
-                const { data: member } = await supabaseClient.from('members').select('full_name').eq('id', user.id).single();
-                const displayName = member?.full_name || user.email;
-                document.getElementById('userNameDisplay').innerText = "User: " + displayName;
-                document.getElementById('appView').classList.remove('hidden-view');
-                document.getElementById('authView').classList.add('hidden-view');
-            } else {
-                document.getElementById('authView').classList.remove('hidden-view');
-            }
-        }
-
-        async function handleLogin() {
-            const email = document.getElementById('authEmail').value.trim();
-            const pass = document.getElementById('authPass').value.trim();
-            if (!email || !pass) return alert("Email dan Password harus diisi!");
-            
-            const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
-            if (error) alert("Login gagal: " + error.message);
-            else checkSession();
-        }
-
-        async function handleRegister() {
-            const name = document.getElementById('regName').value.trim();
-            const email = document.getElementById('regEmail').value.trim();
-            const pass = document.getElementById('regPass').value.trim();
-            if (!name || !email || !pass) return alert("Nama, Email, dan Password harus diisi!");
-         
-            const { data, error } = await supabaseClient.auth.signUp({ email, password: pass });
-            if (error) return alert("Registrasi gagal: " + error.message);
-            
-            const { error: memberError } = await supabaseClient.from('members').insert({
-                id: data.user.id,
-                full_name: name,
-                email: email,
-                role: 'petugas'
+        // ==================== INDEXEDDB ====================
+        let db;
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open("CalsindoDB", 1);
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    if (!db.objectStoreNames.contains("pending")) {
+                        db.createObjectStore("pending", { keyPath: "id_demplot" });
+                    }
+                };
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    updatePendingBadge();
+                    resolve();
+                };
+                request.onerror = reject;
             });
-            if (memberError) alert("Gagal menyimpan nama: " + memberError.message);
-            else {
-                alert("Akun berhasil dibuat! Silakan login.");
-                showLoginForm();
-            }
         }
 
-        async function handleLogout() {
-            await supabaseClient.auth.signOut();
-            location.reload();
+        function saveToPending(data) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(["pending"], "readwrite");
+                const store = tx.objectStore("pending");
+                const request = store.put(data);
+                request.onsuccess = () => { updatePendingBadge(); resolve(); };
+                request.onerror = reject;
+            });
+        }
+
+        function getAllPending() {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(["pending"], "readonly");
+                const store = tx.objectStore("pending");
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = reject;
+            });
+        }
+
+        function deleteFromPending(id) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(["pending"], "readwrite");
+                const store = tx.objectStore("pending");
+                const request = store.delete(id);
+                request.onsuccess = () => { updatePendingBadge(); resolve(); };
+                request.onerror = reject;
+            });
+        }
+
+        async function updatePendingBadge() {
+            const pending = await getAllPending();
+            const badge = document.getElementById('pendingBadge');
+            const icon = document.getElementById('syncIcon');
+            if (pending.length > 0) {
+                badge.textContent = pending.length;
+                badge.classList.remove('hidden');
+                icon.classList.add('text-red-500');
+                icon.classList.remove('text-green-500');
+            } else {
+                badge.classList.add('hidden');
+                icon.classList.add('text-green-500');
+                icon.classList.remove('text-red-500');
+            }
         }
 
         // ==================== FOTO ====================
@@ -304,9 +311,11 @@
         function initPhotoGrid() {
             const grid = document.getElementById('photoGrid');
             grid.innerHTML = '';
+            
             for (let i = 0; i < 4; i++) {
                 const div = document.createElement('div');
                 div.className = 'aspect-square bg-gray-100 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer relative overflow-hidden';
+                
                 div.innerHTML = `
                     <input type="file" accept="image/*" capture="environment" hidden class="cameraInput">
                     <input type="file" accept="image/*" hidden class="galleryInput">
@@ -319,6 +328,7 @@
                     </div>
                     <button class="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full hidden delete-btn">×</button>
                 `;
+                
                 const cameraInput = div.querySelector('.cameraInput');
                 const galleryInput = div.querySelector('.galleryInput');
                 const preview = div.querySelector('.photoPreview');
@@ -379,18 +389,20 @@
         function displayExistingPhotos() {
             const grid = document.getElementById('photoGrid');
             const slots = grid.children;
+
             for (let slot of slots) {
                 const preview = slot.querySelector('.photoPreview');
                 const icon = slot.querySelector('i');
                 const delBtn = slot.querySelector('.delete-btn');
                 const cameraInput = slot.querySelector('.cameraInput');
                 const galleryInput = slot.querySelector('.galleryInput');
+
                 preview.src = '';
                 preview.classList.add('hidden');
                 icon.classList.remove('hidden');
                 delBtn.classList.add('hidden');
-                cameraInput.value = '';
-                galleryInput.value = '';
+                if (cameraInput) cameraInput.value = '';
+                if (galleryInput) galleryInput.value = '';
             }
 
             existingPhotoUrls.forEach((originalUrl, index) => {
@@ -414,144 +426,237 @@
             });
         }
 
-        async function prefillFromExisting(id) {
-            document.getElementById('locationChoiceModal').classList.add('hidden');
-            const { data, error } = await supabaseClient.from('demplot_monitoring').select('*').eq('ID_Demplot', id).single();
-            if (error || !data) return alert("Gagal memuat data lama");
+        // ==================== REGISTER ====================
+        async function handleRegister() {
+            const name = document.getElementById('regName').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const pass = document.getElementById('regPass').value.trim();
+            
+            if (!name || !email || !pass) {
+                return alert("Nama, Email, dan Password harus diisi!");
+            }
 
-            document.getElementById('idDemplot').value = data["ID_Demplot"] || '';
-            document.getElementById('namaPemilik').value = data["Nama Pemilik Demplot"] || '';
-            document.getElementById('telepon').value = data["Telepon"] || '';
-            document.getElementById('luasan').value = data["Luasan Demplot"] || '';
-            document.getElementById('lokasiGPS').value = data["Lokasi Demplot"] || '';
-            document.getElementById('tglTanam').value = data["Tanggal Tanam"] || '';
-            document.getElementById('p1').value = data["Tanggal Perlakuan 1"] || '';
-            document.getElementById('p2').value = data["Tanggal Perlakuan 2"] || '';
-            document.getElementById('p3').value = data["Tanggal Perlakuan 3"] || '';
-            document.getElementById('p4').value = data["Tanggal Perlakuan 4"] || '';
-            document.getElementById('keterangan').value = data["Keterangan"] || '';
+            try {
+                const { data, error } = await supabaseClient.auth.signUp({
+                    email: email,
+                    password: pass,
+                    options: { data: { full_name: name } }
+                });
 
-            existingPhotoUrls = data["Foto"] ? data["Foto"].split(',') : [];
-            isUpdateMode = true;
-            displayExistingPhotos();
-            alert("✅ Data lama dimuat.");
+                if (error) {
+                    console.error("SignUp Error:", error);
+                    return alert("Registrasi gagal: " + error.message);
+                }
+
+                if (!data.user) {
+                    alert("Akun berhasil dibuat!\nSilakan cek email Anda untuk konfirmasi, lalu login.");
+                    showLoginForm();
+                    return;
+                }
+
+                const { error: memberError } = await supabaseClient.from('members').insert({
+                    id: data.user.id,
+                    full_name: name,
+                    email: email,
+                    role: 'petugas'
+                });
+
+                if (memberError) {
+                    console.error("Member Insert Error:", memberError);
+                    alert("Akun berhasil dibuat, tapi gagal menyimpan nama.\nSilakan login.");
+                } else {
+                    alert("Akun berhasil dibuat! Silakan login.");
+                }
+
+                showLoginForm();
+
+            } catch (e) {
+                console.error("Register Error:", e);
+                alert("Terjadi kesalahan saat registrasi.");
+            }
         }
 
+        // ==================== SUBMIT DATA ====================
         async function submitData() {
             const id = document.getElementById('idDemplot').value;
             if (!id) return alert("ID belum ada!");
 
             const inputs = document.querySelectorAll('.cameraInput, .galleryInput');
-            let newUrls = [];
+            let photoDataUrls = [];
 
             for (let inp of inputs) {
                 if (inp.files && inp.files[0]) {
-                    const b64 = await new Promise(r => {
-                        const fr = new FileReader();
-                        fr.onload = e => r(e.target.result.split(',')[1]);
-                        fr.readAsDataURL(inp.files[0]);
+                    const reader = new FileReader();
+                    const dataUrl = await new Promise(resolve => {
+                        reader.onload = e => resolve(e.target.result);
+                        reader.readAsDataURL(inp.files[0]);
                     });
-                    const res = await fetch(GAS_URL, { 
-                        method: 'POST', 
-                        body: JSON.stringify({ filename: "IMG_" + id + "_" + Date.now() + ".jpg", image: b64 }) 
-                    });
-                    const j = await res.json();
-                    if (j.status === "success") newUrls.push(j.url);
+                    photoDataUrls.push(dataUrl);
                 }
             }
 
-            const finalPhotos = [...existingPhotoUrls, ...newUrls].join(',');
-
             const payload = {
-                "ID_Demplot": id,
-                "Nama Pemilik Demplot": document.getElementById('namaPemilik').value,
-                "Telepon": document.getElementById('telepon').value,
-                "Luasan Demplot": document.getElementById('luasan').value,
-                "Lokasi Demplot": document.getElementById('lokasiGPS').value,
-                "Foto": finalPhotos,
-                "Tanggal Tanam": document.getElementById('tglTanam').value || null,
-                "Tanggal Perlakuan 1": document.getElementById('p1').value || null,
-                "Tanggal Perlakuan 2": document.getElementById('p2').value || null,
-                "Tanggal Perlakuan 3": document.getElementById('p3').value || null,
-                "Tanggal Perlakuan 4": document.getElementById('p4').value || null,
-                "Keterangan": document.getElementById('keterangan').value,
-                "last_edited": activeUser.email
+                id_demplot: id,
+                nama_pemilik: document.getElementById('namaPemilik').value,
+                telepon: document.getElementById('telepon').value || "-",
+                luasan: document.getElementById('luasan').value,
+                lokasi: document.getElementById('lokasiGPS').value,
+                tgl_tanam: document.getElementById('tglTanam').value || null,
+                p1: document.getElementById('p1').value || null,
+                p2: document.getElementById('p2').value || null,
+                p3: document.getElementById('p3').value || null,
+                p4: document.getElementById('p4').value || null,
+                keterangan: document.getElementById('keterangan').value,
+                last_updated_by: activeUser?.email || "Unknown",
+                created_by: activeUser?.email || "Unknown",
+                photos: photoDataUrls,
+                timestamp: Date.now()
             };
 
-            const { error } = await supabaseClient.from('demplot_monitoring').upsert(payload);
-            if (error) alert("Gagal menyimpan: " + error.message);
-            else {
-                alert("✅ Data berhasil disimpan!");
-                location.reload();
+            await saveToPending(payload);
+            resetForm();
+            alert("Data disimpan offline. Tekan tombol Sync untuk upload.");
+
+            if (navigator.onLine) {
+                setTimeout(() => processPendingQueue(), 800);
             }
+        }
+
+        function resetForm() {
+            document.getElementById('idDemplot').value = '';
+            document.getElementById('namaPemilik').value = '';
+            document.getElementById('telepon').value = '';
+            document.getElementById('luasan').value = '';
+            document.getElementById('lokasiGPS').value = '';
+            document.getElementById('tglTanam').value = '';
+            document.getElementById('p1').value = '';
+            document.getElementById('p2').value = '';
+            document.getElementById('p3').value = '';
+            document.getElementById('p4').value = '';
+            document.getElementById('keterangan').value = '';
+
+            const slots = document.getElementById('photoGrid').children;
+            for (let slot of slots) {
+                const preview = slot.querySelector('.photoPreview');
+                const icon = slot.querySelector('i');
+                const delBtn = slot.querySelector('.delete-btn');
+                preview.src = '';
+                preview.classList.add('hidden');
+                icon.classList.remove('hidden');
+                delBtn.classList.add('hidden');
+            }
+        }
+
+        // ==================== SYNC ====================
+        async function compressImage(dataUrl) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > 1024) {
+                        const ratio = 1024 / width;
+                        width = 1024;
+                        height = Math.round(height * ratio);
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7));
+                };
+                img.src = dataUrl;
+            });
+        }
+
+        async function uploadToDrive(dataUrl, fileName) {
+            try {
+                const compressed = await compressImage(dataUrl);
+                const base64 = compressed.split(',')[1];
+                const res = await fetch(GAS_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ filename: fileName, image: base64 })
+                });
+                const j = await res.json();
+                return j.status === "success" ? j.url : null;
+            } catch (e) {
+                console.error("Upload error:", e);
+                return null;
+            }
+        }
+
+        async function processPendingQueue() {
+            const pending = await getAllPending();
+            if (pending.length === 0) return "Tidak ada data pending.";
+
+            let success = 0;
+            let fail = 0;
+
+            for (const item of pending) {
+                try {
+                    const finalPhotoUrls = [];
+                    for (let i = 0; i < (item.photos || []).length; i++) {
+                        const photo = item.photos[i];
+                        if (photo.startsWith('http')) {
+                            finalPhotoUrls.push(photo);
+                        } else {
+                            const fileName = `IMG_\( {item.id_demplot}_ \){Date.now()}_${i}.jpg`;
+                            const driveUrl = await uploadToDrive(photo, fileName);
+                            if (driveUrl) finalPhotoUrls.push(driveUrl);
+                        }
+                    }
+
+                    let finalCreatedBy = item.created_by;
+                    try {
+                        const { data: existing } = await supabaseClient
+                            .from('demplot_monitoring')
+                            .select('created_by')
+                            .eq('ID_Demplot', item.id_demplot)
+                            .single();
+                        if (existing && existing.created_by) finalCreatedBy = existing.created_by;
+                    } catch (e) {}
+
+                    const payload = {
+                        "ID_Demplot": item.id_demplot,
+                        "Nama Pemilik Demplot": item.nama_pemilik,
+                        "Telepon": item.telepon,
+                        "Luasan Demplot": item.luasan,
+                        "Lokasi Demplot": item.lokasi,
+                        "Foto": finalPhotoUrls.join(','),
+                        "Tanggal Tanam": item.tgl_tanam,
+                        "Tanggal Perlakuan 1": item.p1,
+                        "Tanggal Perlakuan 2": item.p2,
+                        "Tanggal Perlakuan 3": item.p3,
+                        "Tanggal Perlakuan 4": item.p4,
+                        "Keterangan": item.keterangan,
+                        "last_edited": item.last_updated_by,
+                        "created_by": finalCreatedBy
+                    };
+
+                    await supabaseClient.from('demplot_monitoring').upsert(payload);
+                    await deleteFromPending(item.id_demplot);
+                    success++;
+                } catch (e) {
+                    console.error("Sync error:", e);
+                    fail++;
+                }
+            }
+            await updatePendingBadge();
+            return `Sukses: ${success}, Gagal: ${fail}`;
+        }
+
+        async function manualSync() {
+            const pending = await getAllPending();
+            if (pending.length === 0) {
+                alert("Tidak ada data pending.");
+                return;
+            }
+            const result = await processPendingQueue();
+            alert(result);
         }
 
         // ==================== DETEKSI LOKASI ====================
-        function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
-            const R = 6371e3;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-        }
-
-        function parseCoordinatesFromUrl(url) {
-            if (!url) return null;
-            const match = url.match(/q=([-\d.]+),([-\d.]+)/);
-            return match ? { lat: parseFloat(match[1]), lng: parseFloat(match[2]) } : null;
-        }
-
-        async function checkExistingNearby(currentLat, currentLng) {
-            const { data, error } = await supabaseClient.from('demplot_monitoring').select('ID_Demplot, "Nama Pemilik Demplot", "Lokasi Demplot"');
-            if (error || !data) return false;
-
-            const nearby = [];
-            data.forEach(record => {
-                const coords = parseCoordinatesFromUrl(record["Lokasi Demplot"]);
-                if (coords) {
-                    const dist = getDistanceFromLatLonInMeters(currentLat, currentLng, coords.lat, coords.lng);
-                    if (dist <= 50) {
-                        nearby.push({ id: record.ID_Demplot, nama: record["Nama Pemilik Demplot"] || "Tanpa Nama", distance: Math.round(dist) });
-                    }
-                }
-            });
-
-            if (nearby.length > 0) {
-                currentNearbyRecords = nearby;
-                showNearbyModal();
-                return true;
-            }
-            return false;
-        }
-
-        function showNearbyModal() {
-            const modal = document.getElementById('locationChoiceModal');
-            const list = document.getElementById('nearbyList');
-            list.innerHTML = '';
-            currentNearbyRecords.forEach(r => {
-                const div = document.createElement('div');
-                div.className = 'bg-gray-50 border rounded-2xl p-4 flex justify-between items-center';
-                div.innerHTML = `
-                    <div>
-                        <div class="font-mono text-sm font-bold">${r.id}</div>
-                        <div class="text-sm">${r.nama}</div>
-                        <div class="text-xs text-emerald-600">≈ ${r.distance} meter</div>
-                    </div>
-                    <button onclick="prefillFromExisting('${r.id}')" class="bg-emerald-600 text-white text-xs px-4 py-2 rounded-xl font-bold">Update</button>
-                `;
-                list.appendChild(div);
-            });
-            modal.classList.remove('hidden');
-        }
-
-        function chooseCreateNew() {
-            document.getElementById('locationChoiceModal').classList.add('hidden');
-            if (currentLat && currentLng) {
-                autoFillWilayah(currentLat, currentLng);
-            }
-        }
-
         function detectGPS() {
             navigator.geolocation.getCurrentPosition(async (pos) => {
                 const lat = pos.coords.latitude;
@@ -566,37 +671,274 @@
                 }
             }, (e) => {
                 alert("GPS Error: " + e.message);
-            }, { enableHighAccuracy: true });
+            }, { enableHighAccuracy: true, timeout: 10000 });
+        }
+
+        async function checkExistingNearby(currentLat, currentLng) {
+            try {
+                const { data, error } = await supabaseClient.from('demplot_monitoring').select('*');
+                if (error || !data) return false;
+
+                const nearby = [];
+                data.forEach(record => {
+                    const coords = parseCoordinatesFromUrl(record["Lokasi Demplot"]);
+                    if (coords) {
+                        const dist = getDistanceFromLatLonInMeters(currentLat, currentLng, coords.lat, coords.lng);
+                        if (dist <= 50) nearby.push(record);
+                    }
+                });
+
+                if (nearby.length > 0) {
+                    currentNearbyRecords = nearby;
+                    showNearbyModal();
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+
+        function showNearbyModal() {
+            const modal = document.getElementById('locationChoiceModal');
+            const list = document.getElementById('nearbyList');
+            list.innerHTML = '';
+            
+            currentNearbyRecords.forEach((record, index) => {
+                const div = document.createElement('div');
+                div.className = 'bg-gray-50 border rounded-2xl p-4 flex justify-between items-center mb-2';
+                
+                div.innerHTML = `
+                    <div>
+                        <div class="font-mono text-sm font-bold">${record["ID_Demplot"]}</div>
+                        <div class="text-sm">${record["Nama Pemilik Demplot"] || "Tanpa Nama"}</div>
+                    </div>
+                    <button class="update-btn bg-emerald-600 text-white text-xs px-4 py-2 rounded-xl font-bold">Update</button>
+                `;
+                
+                const updateBtn = div.querySelector('.update-btn');
+                updateBtn.onclick = () => {
+                    selectedNearbyRecord = record;
+                    prefillFromExisting();
+                };
+                
+                list.appendChild(div);
+            });
+            
+            modal.classList.remove('hidden');
+        }
+
+        function chooseCreateNew() {
+            document.getElementById('locationChoiceModal').classList.add('hidden');
+            if (currentLat && currentLng) {
+                autoFillWilayah(currentLat, currentLng);
+            }
+        }
+
+        async function prefillFromExisting() {
+            const modal = document.getElementById('locationChoiceModal');
+            modal.classList.add('hidden');
+
+            if (!selectedNearbyRecord) {
+                alert("Data tidak ditemukan.");
+                return;
+            }
+
+            const record = selectedNearbyRecord;
+
+            document.getElementById('idDemplot').value = record["ID_Demplot"] || '';
+            document.getElementById('namaPemilik').value = record["Nama Pemilik Demplot"] || '';
+            document.getElementById('telepon').value = record["Telepon"] || '';
+            document.getElementById('luasan').value = record["Luasan Demplot"] || '';
+            document.getElementById('lokasiGPS').value = record["Lokasi Demplot"] || '';
+            document.getElementById('tglTanam').value = record["Tanggal Tanam"] || '';
+            document.getElementById('p1').value = record["Tanggal Perlakuan 1"] || '';
+            document.getElementById('p2').value = record["Tanggal Perlakuan 2"] || '';
+            document.getElementById('p3').value = record["Tanggal Perlakuan 3"] || '';
+            document.getElementById('p4').value = record["Tanggal Perlakuan 4"] || '';
+            document.getElementById('keterangan').value = record["Keterangan"] || '';
+
+            existingPhotoUrls = record["Foto"] ? record["Foto"].split(',') : [];
+            isUpdateMode = true;
+            displayExistingPhotos();
+
+            selectedNearbyRecord = null;
+            alert("✅ Data lama dimuat. Silakan edit dan simpan.");
+        }
+
+        function parseCoordinatesFromUrl(url) {
+            if (!url) return null;
+            const match = url.match(/q=([-\d.]+),([-\d.]+)/);
+            return match ? { lat: parseFloat(match[1]), lng: parseFloat(match[2]) } : null;
+        }
+
+        function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
         }
 
         async function autoFillWilayah(lat, lng) {
             try {
-                const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=\( {lat}&lon= \){lng}&zoom=18&addressdetails=1&accept-language=id`;
-                const res = await fetch(url);
-                const data = await res.json();
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-                if (!data || !data.address) {
-                    alert("Gagal membaca data lokasi.");
+                const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=\( {lat}&lon= \){lng}&zoom=18&addressdetails=1&accept-language=id`;
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                const data = await res.json();
+                if (!data || !data.address) throw new Error("Data kosong");
+
+                const addr = data.address;
+
+                const provinceName = addr.state || addr.region || "";
+                const satProv = normalize(provinceName);
+                const provOpts = document.getElementById('selProvinsi').options;
+
+                let provinceMatched = false;
+                for (let i = 1; i < provOpts.length; i++) {
+                    const pNameNorm = normalize(provOpts[i].text);
+                    if (satProv === pNameNorm || (satProv.includes(pNameNorm) && pNameNorm.length >= 5)) {
+                        document.getElementById('selProvinsi').value = provOpts[i].value;
+                        await loadCities(provOpts[i].value);
+                        provinceMatched = true;
+                        break;
+                    }
+                }
+
+                if (!provinceMatched) {
+                    alert("Gagal mendeteksi Provinsi. Silakan pilih manual.");
                     return;
                 }
 
-                const addr = data.address;
-                console.log("Nominatim Address:", addr);
+                const satKota = normalize(addr.city || addr.county || "");
+                const kotaOpts = document.getElementById('selKota').options;
+                for (let i = 1; i < kotaOpts.length; i++) {
+                    const kNameNorm = normalize(kotaOpts[i].text);
+                    if (satKota === kNameNorm || satKota.includes(kNameNorm) || kNameNorm.includes(satKota)) {
+                        document.getElementById('selKota').value = kotaOpts[i].value;
+                        await loadDistricts(kotaOpts[i].value);
+                        break;
+                    }
+                }
 
-                // Provinsi, Kota, Kecamatan (kode sama seperti versi stabil)
-                // ... (saya ringkas, gunakan kode autoFillWilayah dari versi stabil sebelumnya)
+                const possibleKec = [addr.suburb, addr.district, addr.village, addr.municipality].filter(Boolean);
+                const kecOpts = document.getElementById('selKecamatan').options;
+                let foundKec = false;
+
+                for (let target of possibleKec.map(n => normalize(n))) {
+                    for (let i = 1; i < kecOpts.length; i++) {
+                        const optNorm = normalize(kecOpts[i].text);
+                        if (target === optNorm || target.includes(optNorm) || optNorm.includes(target)) {
+                            document.getElementById('selKecamatan').value = kecOpts[i].value;
+                            foundKec = true;
+                            break;
+                        }
+                    }
+                    if (foundKec) break;
+                }
 
                 await generateIDManual();
 
             } catch (e) {
                 console.error(e);
-                alert("Terjadi kesalahan saat mendeteksi lokasi.");
+                alert("Gagal mendeteksi lokasi otomatis. Silakan isi manual.");
             }
         }
 
-        // ==================== Fungsi Lain (loadProvinces, generateIDManual, dll) ====================
-        // Silakan copy dari script stabil sebelumnya yang sudah berfungsi
+        async function generateIDManual() {
+            const pOpt = document.querySelector('#selProvinsi option:checked');
+            const kOpt = document.querySelector('#selKota option:checked');
+            const dOpt = document.querySelector('#selKecamatan option:checked');
+            if (!pOpt || !kOpt || !dOpt) return;
 
+            const cleanP = getShortProv(pOpt.dataset.name);
+            const cleanK = toPascalCaseID(kOpt.dataset.name);
+            const cleanD = toPascalCaseID(dOpt.dataset.name);
+            const prefix = cleanP + "_" + cleanK + "_" + cleanD;
+
+            const { data } = await supabaseClient.from('demplot_monitoring').select('ID_Demplot').ilike('ID_Demplot', prefix + '%');
+            const existing = new Set();
+            if (data) data.forEach(row => {
+                const num = parseInt(row.ID_Demplot.split('_').pop());
+                if (!isNaN(num)) existing.add(num);
+            });
+
+            let next = 1;
+            while (existing.has(next)) next++;
+            if (next > 999) next = 999;
+
+            document.getElementById('idDemplot').value = prefix + "_" + next.toString().padStart(3, '0');
+        }
+
+        function getShortProv(fullName) {
+            const n = fullName.toUpperCase().trim();
+            const provinceMap = {
+                "ACEH": "Aceh", "SUMATERA UTARA": "Sumut", "SUMATERA BARAT": "Sumbar",
+                "RIAU": "Riau", "JAMBI": "Jambi", "SUMATERA SELATAN": "Sumsel",
+                "BENGKULU": "Bengkulu", "LAMPUNG": "Lampung", "KEPULAUAN BANGKA BELITUNG": "Babel",
+                "KEPULAUAN RIAU": "Kepri", "DKI JAKARTA": "DKI", "JAWA BARAT": "Jabar",
+                "JAWA TENGAH": "Jateng", "DAERAH ISTIMEWA YOGYAKARTA": "DIY", "JAWA TIMUR": "Jatim",
+                "BANTEN": "Banten", "BALI": "Bali", "NUSA TENGGARA BARAT": "NTB",
+                "NUSA TENGGARA TIMUR": "NTT", "KALIMANTAN BARAT": "Kalbar", "KALIMANTAN TENGAH": "Kalteng",
+                "KALIMANTAN SELATAN": "Kalsel", "KALIMANTAN TIMUR": "Kaltim", "KALIMANTAN UTARA": "Kaltara",
+                "SULAWESI UTARA": "Sulut", "SULAWESI TENGAH": "Sulteng", "SULAWESI SELATAN": "Sulsel",
+                "SULAWESI TENGGARA": "Sultra", "GORONTALO": "Gorontalo", "SULAWESI BARAT": "Sulbar",
+                "MALUKU": "Maluku", "MALUKU UTARA": "Malut", "PAPUA": "Papua",
+                "PAPUA BARAT": "Papbar", "PAPUA SELATAN": "Papsel", "PAPUA TENGAH": "Papteng",
+                "PAPUA PEGUNUNGAN": "Papeg", "PAPUA BARAT DAYA": "PapbarDaya"
+            };
+            for (const [key, value] of Object.entries(provinceMap)) {
+                if (n.includes(key)) return value;
+            }
+            return toPascalCaseID(fullName);
+        }
+
+        function normalize(str) {
+            if (!str) return '';
+            return str.toLowerCase().replace(/\b(kabupaten|kota|kecamatan|kec\.|regency|city|district|suburb|village|municipality|town|kelurahan|desa|provinsi)\b/gi, '').replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, ' ');
+        }
+
+        function toTitleCaseDisplay(str) {
+            return str.replace(/KABUPATEN |KOTA |KECAMATAN |KEC\. /gi, "").toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        }
+
+        function toPascalCaseID(str) {
+            return str.replace(/KABUPATEN |KOTA |KECAMATAN |KEC\. /gi, "").toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+        }
+
+        async function loadProvinces() {
+            const res = await fetch("https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json");
+            const data = await res.json();
+            let html = '<option value="">Pilih Prov</option>';
+            data.forEach(p => html += `<option value="\( {p.id}" data-name=" \){p.name}">${toTitleCaseDisplay(p.name)}</option>`);
+            document.getElementById('selProvinsi').innerHTML = html;
+        }
+
+        async function loadCities(pid) {
+            if (!pid) return;
+            const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${pid}.json`);
+            const data = await res.json();
+            let html = '<option value="">Pilih Kota</option>';
+            data.forEach(c => html += `<option value="\( {c.id}" data-name=" \){c.name}">${toTitleCaseDisplay(c.name)}</option>`);
+            document.getElementById('selKota').innerHTML = html;
+        }
+
+        async function loadDistricts(cid) {
+            if (!cid) return;
+            const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${cid}.json`);
+            const data = await res.json();
+            let html = '<option value="">Pilih Kecamatan</option>';
+            data.forEach(d => html += `<option value="\( {d.id}" data-name=" \){d.name}">${toTitleCaseDisplay(d.name)}</option>`);
+            document.getElementById('selKecamatan').innerHTML = html;
+        }
+
+        // ==================== AUTH ====================
         async function checkSession() {
             const { data: { user } } = await supabaseClient.auth.getUser();
             if (user) {
@@ -609,6 +951,59 @@
             } else {
                 document.getElementById('authView').classList.remove('hidden-view');
             }
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('authEmail').value.trim();
+            const pass = document.getElementById('authPass').value.trim();
+            if (!email || !pass) return alert("Email dan Password harus diisi!");
+            const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
+            if (error) alert("Login gagal: " + error.message);
+            else checkSession();
+        }
+
+        async function handleLogout() {
+            await supabaseClient.auth.signOut();
+            location.reload();
+        }
+
+        // ==================== INIT ====================
+        window.onload = async () => {
+            await initDB();
+            initPhotoGrid();
+            checkSession();
+            await loadProvinces();
+            
+            // === EVENT LISTENER UNTUK LINK & TOMBOL ===
+            const linkRegister = document.getElementById('linkRegister');
+            const linkLogin = document.getElementById('linkLogin');
+            const btnRegister = document.getElementById('btnRegister');
+
+            if (linkRegister) linkRegister.addEventListener('click', showRegisterForm);
+            if (linkLogin) linkLogin.addEventListener('click', showLoginForm);
+            if (btnRegister) btnRegister.addEventListener('click', handleRegister);
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('service-worker.js');
+            }
+            
+            window.addEventListener('online', async () => {
+                const pending = await getAllPending();
+                if (pending.length > 0) {
+                    await processPendingQueue();
+                }
+            });
+        };
+
+        // ==================== FUNGSI SHOW/HIDE FORM ====================
+        function showLoginForm() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('registerForm').classList.add('hidden');
+        }
+
+        function showRegisterForm() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
         }
     </script>
 </body>
