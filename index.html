@@ -168,7 +168,7 @@
         <div class="loader w-14 h-14 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>
     </div>
 
-    <!-- MODAL LOKASI -->
+    <!-- MODAL LOKASI (DIPERBAIKI) -->
     <div id="locationChoiceModal" class="fixed inset-0 bg-black/70 hidden z-[200] flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl max-w-sm w-full p-6">
             <h3 class="font-bold text-xl mb-4">Pilih Lahan</h3>
@@ -226,30 +226,25 @@
         let currentLat = null;
         let currentLng = null;
         let currentPhotoSlot = null;
+        let selectedNearbyRecord = null;   // ← Variabel baru untuk fix bug
 
         // ==================== INDEXEDDB ====================
         let db;
         function initDB() {
             return new Promise((resolve, reject) => {
                 const request = indexedDB.open("CalsindoDB", 1);
-                
                 request.onupgradeneeded = (event) => {
                     db = event.target.result;
                     if (!db.objectStoreNames.contains("pending")) {
                         db.createObjectStore("pending", { keyPath: "id_demplot" });
                     }
                 };
-                
                 request.onsuccess = (event) => {
                     db = event.target.result;
                     updatePendingBadge();
                     resolve();
                 };
-                
-                request.onerror = (event) => {
-                    console.error("IndexedDB error:", event);
-                    reject(event);
-                };
+                request.onerror = reject;
             });
         }
 
@@ -287,7 +282,6 @@
             const pending = await getAllPending();
             const badge = document.getElementById('pendingBadge');
             const icon = document.getElementById('syncIcon');
-            
             if (pending.length > 0) {
                 badge.textContent = pending.length;
                 badge.classList.remove('hidden');
@@ -427,7 +421,7 @@
             });
         }
 
-        // ==================== SUBMIT DATA (OFFLINE FIRST) ====================
+        // ==================== SUBMIT DATA ====================
         async function submitData() {
             const id = document.getElementById('idDemplot').value;
             if (!id) return alert("ID belum ada!");
@@ -465,10 +459,7 @@
             };
 
             await saveToPending(payload);
-            
-            // Reset form
             resetForm();
-
             alert("Data disimpan offline. Tekan tombol Sync untuk upload.");
 
             if (navigator.onLine) {
@@ -501,7 +492,7 @@
             }
         }
 
-        // ==================== SYNC & PHOTO UPLOAD ====================
+        // ==================== SYNC ====================
         async function compressImage(dataUrl) {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -528,7 +519,6 @@
             try {
                 const compressed = await compressImage(dataUrl);
                 const base64 = compressed.split(',')[1];
-
                 const res = await fetch(GAS_URL, {
                     method: 'POST',
                     body: JSON.stringify({ filename: fileName, image: base64 })
@@ -550,7 +540,6 @@
 
             for (const item of pending) {
                 try {
-                    // 1. Upload foto ke Drive
                     const finalPhotoUrls = [];
                     for (let i = 0; i < (item.photos || []).length; i++) {
                         const photo = item.photos[i];
@@ -563,7 +552,6 @@
                         }
                     }
 
-                    // 2. Cek apakah record sudah ada di Supabase (untuk ambil created_by asli)
                     let finalCreatedBy = item.created_by;
                     try {
                         const { data: existing } = await supabaseClient
@@ -571,13 +559,9 @@
                             .select('created_by')
                             .eq('ID_Demplot', item.id_demplot)
                             .single();
-                        
-                        if (existing && existing.created_by) {
-                            finalCreatedBy = existing.created_by;
-                        }
+                        if (existing && existing.created_by) finalCreatedBy = existing.created_by;
                     } catch (e) {}
 
-                    // 3. Kirim ke Supabase
                     const payload = {
                         "ID_Demplot": item.id_demplot,
                         "Nama Pemilik Demplot": item.nama_pemilik,
@@ -596,17 +580,13 @@
                     };
 
                     await supabaseClient.from('demplot_monitoring').upsert(payload);
-
-                    // 4. Hapus dari pending
                     await deleteFromPending(item.id_demplot);
                     success++;
-
                 } catch (e) {
-                    console.error("Sync error for", item.id_demplot, e);
+                    console.error("Sync error:", e);
                     fail++;
                 }
             }
-
             await updatePendingBadge();
             return `Sukses: ${success}, Gagal: ${fail}`;
         }
@@ -617,7 +597,6 @@
                 alert("Tidak ada data pending.");
                 return;
             }
-            
             const result = await processPendingQueue();
             alert(result);
         }
@@ -636,7 +615,7 @@
                     await autoFillWilayah(lat, lng);
                 }
             }, (e) => {
-                alert("GPS Error: " + e.message + "\nPastikan GPS aktif dan izinkan akses lokasi.");
+                alert("GPS Error: " + e.message);
             }, { enableHighAccuracy: true, timeout: 10000 });
         }
 
@@ -650,9 +629,7 @@
                     const coords = parseCoordinatesFromUrl(record["Lokasi Demplot"]);
                     if (coords) {
                         const dist = getDistanceFromLatLonInMeters(currentLat, currentLng, coords.lat, coords.lng);
-                        if (dist <= 50) {
-                            nearby.push(record);
-                        }
+                        if (dist <= 50) nearby.push(record);
                     }
                 });
 
@@ -668,23 +645,34 @@
             }
         }
 
+        // ==================== MODAL LOKASI (DIPERBAIKI) ====================
         function showNearbyModal() {
             const modal = document.getElementById('locationChoiceModal');
             const list = document.getElementById('nearbyList');
             list.innerHTML = '';
             
-            currentNearbyRecords.forEach(r => {
+            currentNearbyRecords.forEach((record, index) => {
                 const div = document.createElement('div');
                 div.className = 'bg-gray-50 border rounded-2xl p-4 flex justify-between items-center mb-2';
+                
                 div.innerHTML = `
                     <div>
-                        <div class="font-mono text-sm font-bold">${r["ID_Demplot"]}</div>
-                        <div class="text-sm">${r["Nama Pemilik Demplot"] || "Tanpa Nama"}</div>
+                        <div class="font-mono text-sm font-bold">${record["ID_Demplot"]}</div>
+                        <div class="text-sm">${record["Nama Pemilik Demplot"] || "Tanpa Nama"}</div>
                     </div>
-                    <button onclick="prefillFromExisting('${r["ID_Demplot"]}')" class="bg-emerald-600 text-white text-xs px-4 py-2 rounded-xl font-bold">Update</button>
+                    <button class="update-btn bg-emerald-600 text-white text-xs px-4 py-2 rounded-xl font-bold">Update</button>
                 `;
+                
+                // Event listener yang lebih stabil
+                const updateBtn = div.querySelector('.update-btn');
+                updateBtn.onclick = () => {
+                    selectedNearbyRecord = record;
+                    prefillFromExisting();
+                };
+                
                 list.appendChild(div);
             });
+            
             modal.classList.remove('hidden');
         }
 
@@ -693,6 +681,40 @@
             if (currentLat && currentLng) {
                 autoFillWilayah(currentLat, currentLng);
             }
+        }
+
+        // ==================== PREFILL (DIPERBAIKI) ====================
+        async function prefillFromExisting() {
+            const modal = document.getElementById('locationChoiceModal');
+            modal.classList.add('hidden');
+
+            if (!selectedNearbyRecord) {
+                alert("Data tidak ditemukan.");
+                return;
+            }
+
+            const record = selectedNearbyRecord;
+
+            document.getElementById('idDemplot').value = record["ID_Demplot"] || '';
+            document.getElementById('namaPemilik').value = record["Nama Pemilik Demplot"] || '';
+            document.getElementById('telepon').value = record["Telepon"] || '';
+            document.getElementById('luasan').value = record["Luasan Demplot"] || '';
+            document.getElementById('lokasiGPS').value = record["Lokasi Demplot"] || '';
+            document.getElementById('tglTanam').value = record["Tanggal Tanam"] || '';
+            document.getElementById('p1').value = record["Tanggal Perlakuan 1"] || '';
+            document.getElementById('p2').value = record["Tanggal Perlakuan 2"] || '';
+            document.getElementById('p3').value = record["Tanggal Perlakuan 3"] || '';
+            document.getElementById('p4').value = record["Tanggal Perlakuan 4"] || '';
+            document.getElementById('keterangan').value = record["Keterangan"] || '';
+
+            existingPhotoUrls = record["Foto"] ? record["Foto"].split(',') : [];
+            isUpdateMode = true;
+            displayExistingPhotos();
+
+            // Reset variabel
+            selectedNearbyRecord = null;
+
+            alert("✅ Data lama dimuat. Silakan edit dan simpan.");
         }
 
         function parseCoordinatesFromUrl(url) {
@@ -724,7 +746,6 @@
 
                 const addr = data.address;
 
-                // Provinsi
                 const provinceName = addr.state || addr.region || "";
                 const satProv = normalize(provinceName);
                 const provOpts = document.getElementById('selProvinsi').options;
@@ -745,7 +766,6 @@
                     return;
                 }
 
-                // Kota
                 const satKota = normalize(addr.city || addr.county || "");
                 const kotaOpts = document.getElementById('selKota').options;
                 for (let i = 1; i < kotaOpts.length; i++) {
@@ -757,7 +777,6 @@
                     }
                 }
 
-                // Kecamatan
                 const possibleKec = [addr.suburb, addr.district, addr.village, addr.municipality].filter(Boolean);
                 const kecOpts = document.getElementById('selKecamatan').options;
                 let foundKec = false;
@@ -935,8 +954,7 @@
             window.addEventListener('online', async () => {
                 const pending = await getAllPending();
                 if (pending.length > 0) {
-                    const result = await processPendingQueue();
-                    console.log("Auto sync result:", result);
+                    await processPendingQueue();
                 }
             });
         };
